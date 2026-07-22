@@ -1,0 +1,628 @@
+import { marked } from "marked";
+import {
+  AlignmentType,
+  BorderStyle,
+  Document,
+  HeadingLevel,
+  ImageRun,
+  Packer,
+  Paragraph,
+  Table,
+  TableCell,
+  TableRow,
+  TextRun,
+  WidthType,
+} from "docx";
+import type { Platform, PlatformVariant } from "@/types/geo";
+
+const articleSyncCssUrl = "https://cdn.jsdelivr.net/gh/wechatsync/article-syncjs@latest/dist/styles.css";
+const articleSyncJsUrl = "https://cdn.jsdelivr.net/gh/wechatsync/article-syncjs@latest/dist/main.js";
+
+const wechatSyncPlatformKeys: Record<Platform, string> = {
+  zhihu: "zhihu",
+  toutiao: "toutiao",
+  baijiahao: "baijiahao",
+  csdn: "csdn",
+  cnblogs: "cnblogs",
+  juejin: "juejin",
+  sohu: "sohu",
+  netease: "netease",
+  wechat: "wechat",
+  cto51: "51cto",
+};
+
+export const platformDraftUrls: Record<Platform, string> = {
+  zhihu: "https://www.zhihu.com/creator",
+  toutiao: "https://mp.toutiao.com/profile_v4/graphic/publish",
+  baijiahao: "https://baijiahao.baidu.com/builder/rc/edit",
+  csdn: "https://editor.csdn.net/md/",
+  cnblogs: "https://i.cnblogs.com/posts/edit",
+  juejin: "https://juejin.cn/editor/drafts/new",
+  sohu: "https://mp.sohu.com/mpfe/v3/main/news/add",
+  netease: "https://mp.163.com/wemedia/write/article",
+  wechat: "https://mp.weixin.qq.com/",
+  cto51: "https://blog.51cto.com/",
+};
+
+type WechatSyncResult = {
+  taskId?: string;
+  url?: string;
+  draftUrl?: string;
+  message?: string;
+};
+
+type WechatSyncWindow = Window & {
+  syncPost?: (article: Record<string, unknown>) => Promise<WechatSyncResult> | WechatSyncResult;
+  __articleSyncJsLoading?: Promise<void>;
+};
+
+function loadStyleOnce(href: string) {
+  if (document.querySelector(`link[href="${href}"]`)) return;
+  const link = document.createElement("link");
+  link.rel = "stylesheet";
+  link.href = href;
+  document.head.appendChild(link);
+}
+
+function loadScriptOnce(src: string) {
+  const win = window as WechatSyncWindow;
+  if (win.__articleSyncJsLoading) return win.__articleSyncJsLoading;
+
+  win.__articleSyncJsLoading = new Promise<void>((resolve, reject) => {
+    if (document.querySelector(`script[src="${src}"]`)) {
+      resolve();
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.src = src;
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("article-syncjs 加载失败"));
+    document.body.appendChild(script);
+  });
+
+  return win.__articleSyncJsLoading;
+}
+
+export async function ensureWechatSyncBridge() {
+  if (typeof window === "undefined") return false;
+  if (hasWechatSyncBridge()) return true;
+
+  loadStyleOnce(articleSyncCssUrl);
+  await loadScriptOnce(articleSyncJsUrl);
+  return hasWechatSyncBridge();
+}
+
+export function hasWechatSyncBridge() {
+  if (typeof window === "undefined") return false;
+  return typeof (window as WechatSyncWindow).syncPost === "function";
+}
+
+export async function buildWechatSyncArticle(variant: PlatformVariant) {
+  let html = marked.parse(variant.bodyMarkdown) as string;
+
+  if (variant.platform === "netease") {
+    // 网易号适配器会把 table 转纯文本，同时后台脚本拿不到本站登录态下载飞书图片。
+    // 因此网易专用：图片压缩内联、表格渲染成图片，再交给 Wechatsync 上传到网易素材。
+    html = await inlineFeishuImages(html);
+    html = await convertTablesToImages(html);
+  } else {
+    // 其他平台保持原生 HTML 表格，只把飞书图片转成绝对 URL 交给适配器上传。
+    html = resolveImageUrls(html);
+  }
+
+  return {
+    title: variant.title,
+    desc: variant.summary,
+    summary: variant.summary,
+    content: html,
+    html: html,
+    markdown: variant.bodyMarkdown,
+    tags: variant.tags,
+    draft: true,
+    openDraft: true,
+  };
+}
+
+/** 将飞书图片相对路径转为绝对 URL，让适配器 processImages 下载并上传 */
+function resolveImageUrls(html: string): string {
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  let result = html.replace(
+    /feishu-image:\/\/([\w]+)/g,
+    `${origin}/api/feishu-image/$1`
+  );
+  result = result.replace(
+    /src="\/api\/feishu-image\/([^"]+)"/g,
+    `src="${origin}/api/feishu-image/$1"`
+  );
+  return result;
+}
+
+/** 图片最大宽度（px），超过等比缩放 */
+const MAX_IMAGE_WIDTH = 800;
+/** JPEG 压缩质量 */
+const JPEG_QUALITY = 0.75;
+
+/** 网易专用：下载飞书图片后压缩为 data URI，随后 Wechatsync 会上传为网易图片 URL */
+async function inlineFeishuImages(html: string): Promise<string> {
+  const normalized = html.replace(/feishu-image:\/\/([\w]+)/g, "/api/feishu-image/$1");
+  const regex = /src="\/api\/feishu-image\/([^"]+)"/g;
+  const matches = Array.from(normalized.matchAll(regex));
+  if (!matches.length) return normalized;
+
+  const replacements = await Promise.all(
+    matches.map(async (match) => {
+      const token = match[1];
+      try {
+        const res = await fetch(`/api/feishu-image/${token}`);
+        if (!res.ok) return { original: match[0], replacement: match[0] };
+        const blob = await res.blob();
+        const compressed = await compressImage(blob, MAX_IMAGE_WIDTH, JPEG_QUALITY);
+        return { original: match[0], replacement: `src="${compressed}"` };
+      } catch {
+        return { original: match[0], replacement: match[0] };
+      }
+    }),
+  );
+
+  let result = normalized;
+  for (const { original, replacement } of replacements) {
+    result = result.replace(original, replacement);
+  }
+  return result;
+}
+
+/** 用 Canvas 压缩图片：超过 maxWidth 等比缩放，输出 JPEG data URI */
+function compressImage(blob: Blob, maxWidth: number, quality: number): Promise<string> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      let { width, height } = img;
+      if (width > maxWidth) {
+        height = Math.round((height * maxWidth) / width);
+        width = maxWidth;
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d")!;
+      ctx.drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL("image/jpeg", quality));
+      URL.revokeObjectURL(img.src);
+    };
+    img.onerror = () => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.readAsDataURL(blob);
+      URL.revokeObjectURL(img.src);
+    };
+    img.src = URL.createObjectURL(blob);
+  });
+}
+
+/** 网易专用：将 HTML table 渲染成 PNG 图片，避免网易适配器把表格转纯文本 */
+async function convertTablesToImages(html: string): Promise<string> {
+  const tableRegex = /<table[^>]*>[\s\S]*?<\/table>/gi;
+  const tables = html.match(tableRegex) || [];
+  if (!tables.length) return html;
+
+  const replacements = await Promise.all(
+    tables.map(async (tableHtml, index) => {
+      try {
+        const image = await tableToPng(tableHtml);
+        return {
+          original: tableHtml,
+          replacement: `<p><img src="${image}" alt="表格 ${index + 1}" /></p>`,
+        };
+      } catch {
+        return { original: tableHtml, replacement: tableHtml };
+      }
+    }),
+  );
+
+  let result = html;
+  for (const { original, replacement } of replacements) {
+    result = result.replace(original, replacement);
+  }
+  return result;
+}
+
+function tableToPng(tableHtml: string): Promise<string> {
+  const rows = parseTable(tableHtml);
+  if (!rows.length) return Promise.resolve("");
+
+  const maxCols = Math.max(...rows.map((row) => row.length));
+  const cellPaddingX = 18;
+  const cellPaddingY = 12;
+  const fontSize = 26;
+  const lineHeight = 36;
+  const minColWidth = 180;
+  const maxColWidth = 300;
+  const tableWidth = Math.min(1200, Math.max(640, maxCols * minColWidth));
+  const colWidth = Math.min(maxColWidth, Math.floor(tableWidth / maxCols));
+
+  const wrappedRows = rows.map((row) =>
+    Array.from({ length: maxCols }, (_, colIndex) => wrapText(stripHtml(row[colIndex] || ""), 10))
+  );
+  const rowHeights = wrappedRows.map((row) =>
+    Math.max(...row.map((lines) => Math.max(1, lines.length))) * lineHeight + cellPaddingY * 2
+  );
+  const width = colWidth * maxCols;
+  const height = rowHeights.reduce((sum, item) => sum + item, 0);
+
+  let y = 0;
+  const parts: string[] = [
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`,
+    `<rect width="100%" height="100%" fill="#ffffff"/>`,
+  ];
+
+  wrappedRows.forEach((row, rowIndex) => {
+    const rowHeight = rowHeights[rowIndex];
+    let x = 0;
+    row.forEach((lines, colIndex) => {
+      const isHeader = rowIndex === 0;
+      parts.push(`<rect x="${x}" y="${y}" width="${colWidth}" height="${rowHeight}" fill="${isHeader ? "#f6f8fa" : "#ffffff"}" stroke="#d9d9d9" stroke-width="1"/>`);
+      lines.forEach((line, lineIndex) => {
+        parts.push(`<text x="${x + cellPaddingX}" y="${y + cellPaddingY + fontSize + lineIndex * lineHeight}" font-family="Arial, 'Microsoft YaHei', sans-serif" font-size="${fontSize}" font-weight="${isHeader ? 700 : 400}" fill="#222222">${escapeXml(line)}</text>`);
+      });
+      x += colWidth;
+    });
+    y += rowHeight;
+  });
+
+  parts.push("</svg>");
+  const svg = parts.join("");
+  return svgToPng(svg, width, height);
+}
+
+function parseTable(tableHtml: string): string[][] {
+  const rows: string[][] = [];
+  const rowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+  let rowMatch: RegExpExecArray | null;
+  while ((rowMatch = rowRegex.exec(tableHtml)) !== null) {
+    const row: string[] = [];
+    const cellRegex = /<t[hd][^>]*>([\s\S]*?)<\/t[hd]>/gi;
+    let cellMatch: RegExpExecArray | null;
+    while ((cellMatch = cellRegex.exec(rowMatch[1])) !== null) {
+      row.push(cellMatch[1]);
+    }
+    if (row.length) rows.push(row);
+  }
+  return rows;
+}
+
+function stripHtml(value: string): string {
+  return value
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .trim();
+}
+
+function wrapText(text: string, maxChars: number): string[] {
+  const normalized = text || " ";
+  const lines: string[] = [];
+  for (const paragraph of normalized.split(/\n+/)) {
+    if (!paragraph) continue;
+    for (let i = 0; i < paragraph.length; i += maxChars) {
+      lines.push(paragraph.slice(i, i + maxChars));
+    }
+  }
+  return lines.length ? lines : [" "];
+}
+
+function escapeXml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+function svgToPng(svg: string, width: number, height: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d")!;
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, width, height);
+      ctx.drawImage(img, 0, 0);
+      resolve(canvas.toDataURL("image/png"));
+      URL.revokeObjectURL(img.src);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(img.src);
+      reject(new Error("表格转图片失败"));
+    };
+    img.src = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml;charset=utf-8" }));
+  });
+}
+
+export async function buildNeteaseDocxBlob(variant: PlatformVariant) {
+  const children: (Paragraph | Table)[] = [
+    new Paragraph({
+      text: variant.title,
+      heading: HeadingLevel.HEADING_1,
+      spacing: { after: 240 },
+    }),
+  ];
+
+  if (variant.summary) {
+    children.push(new Paragraph({
+      children: [new TextRun({ text: variant.summary, color: "555555" })],
+      spacing: { after: 240 },
+    }));
+  }
+
+  children.push(...await markdownToDocxChildren(variant.bodyMarkdown));
+
+  if (variant.tags.length) {
+    children.push(new Paragraph({
+      children: [new TextRun({ text: `标签：${variant.tags.join("、")}`, color: "666666" })],
+      spacing: { before: 240 },
+    }));
+  }
+
+  const doc = new Document({
+    sections: [{
+      properties: {},
+      children,
+    }],
+  });
+
+  return Packer.toBlob(doc);
+}
+
+async function markdownToDocxChildren(markdown: string): Promise<(Paragraph | Table)[]> {
+  const tokens = marked.lexer(markdown) as any[];
+  const children: (Paragraph | Table)[] = [];
+
+  for (const token of tokens) {
+    if (token.type === "heading") {
+      children.push(new Paragraph({
+        text: tokenText(token),
+        heading: token.depth === 1 ? HeadingLevel.HEADING_1 : token.depth === 2 ? HeadingLevel.HEADING_2 : HeadingLevel.HEADING_3,
+        spacing: { before: 240, after: 120 },
+      }));
+      continue;
+    }
+
+    if (token.type === "paragraph") {
+      const imageTokens = (token.tokens || []).filter((item: any) => item.type === "image");
+      const text = stripMarkdownImages(tokenText(token));
+      if (text.trim()) children.push(new Paragraph({ text, spacing: { after: 160 } }));
+      for (const imageToken of imageTokens) {
+        const imageParagraph = await imageTokenToParagraph(imageToken.href, imageToken.text || "");
+        if (imageParagraph) children.push(imageParagraph);
+      }
+      continue;
+    }
+
+    if (token.type === "image") {
+      const imageParagraph = await imageTokenToParagraph(token.href, token.text || "");
+      if (imageParagraph) children.push(imageParagraph);
+      continue;
+    }
+
+    if (token.type === "table") {
+      children.push(markedTableToDocxTable(token));
+      continue;
+    }
+
+    if (token.type === "list") {
+      for (const item of token.items || []) {
+        children.push(new Paragraph({
+          text: tokenText(item),
+          bullet: token.ordered ? undefined : { level: 0 },
+          spacing: { after: 80 },
+        }));
+      }
+      continue;
+    }
+
+    if (token.type === "blockquote") {
+      children.push(new Paragraph({
+        children: [new TextRun({ text: tokenText(token), italics: true, color: "666666" })],
+        spacing: { before: 120, after: 120 },
+      }));
+      continue;
+    }
+
+    if (token.type === "code") {
+      children.push(new Paragraph({
+        children: [new TextRun({ text: token.text || "", font: "Consolas" })],
+        spacing: { before: 120, after: 120 },
+      }));
+      continue;
+    }
+
+    if (token.type === "hr") {
+      children.push(new Paragraph({ text: "", thematicBreak: true }));
+      continue;
+    }
+  }
+
+  return children;
+}
+
+function markedTableToDocxTable(token: any) {
+  const rows = [token.header || [], ...(token.rows || [])];
+  const maxCols = Math.max(1, ...rows.map((row: any[]) => row.length));
+  const cellWidth = Math.floor(100 / maxCols);
+
+  return new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    rows: rows.map((row: any[], rowIndex: number) => new TableRow({
+      children: Array.from({ length: maxCols }, (_, index) => {
+        const text = tokenText(row[index] || "");
+        return new TableCell({
+          width: { size: cellWidth, type: WidthType.PERCENTAGE },
+          shading: rowIndex === 0 ? { fill: "F6F8FA" } : undefined,
+          margins: { top: 120, bottom: 120, left: 160, right: 160 },
+          borders: tableCellBorders(),
+          children: [new Paragraph({
+            children: [new TextRun({ text, bold: rowIndex === 0 })],
+          })],
+        });
+      }),
+    })),
+  });
+}
+
+function tableCellBorders() {
+  return {
+    top: { style: BorderStyle.SINGLE, size: 1, color: "D9D9D9" },
+    bottom: { style: BorderStyle.SINGLE, size: 1, color: "D9D9D9" },
+    left: { style: BorderStyle.SINGLE, size: 1, color: "D9D9D9" },
+    right: { style: BorderStyle.SINGLE, size: 1, color: "D9D9D9" },
+  };
+}
+
+async function imageTokenToParagraph(src: string, alt: string) {
+  const data = await imageToDocxData(src);
+  if (!data) return null;
+  return new Paragraph({
+    alignment: AlignmentType.CENTER,
+    children: [new ImageRun({
+      type: "jpg",
+      data: data.data,
+      transformation: { width: data.width, height: data.height },
+      altText: { title: alt || "图片", description: alt || "图片", name: alt || "图片" },
+    })],
+    spacing: { before: 160, after: 160 },
+  });
+}
+
+async function imageToDocxData(src: string): Promise<{ data: Uint8Array; width: number; height: number } | null> {
+  try {
+    const normalizedSrc = src.replace(/feishu-image:\/\/([\w]+)/g, "/api/feishu-image/$1");
+    const res = await fetch(normalizedSrc);
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    const compressed = await compressImageToDataUrl(blob, 640, 0.82);
+    const bytes = dataUrlToUint8Array(compressed.dataUrl);
+    return { data: bytes, width: compressed.width, height: compressed.height };
+  } catch {
+    return null;
+  }
+}
+
+function compressImageToDataUrl(blob: Blob, maxWidth: number, quality: number): Promise<{ dataUrl: string; width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      let { width, height } = img;
+      if (width > maxWidth) {
+        height = Math.round((height * maxWidth) / width);
+        width = maxWidth;
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d")!;
+      ctx.drawImage(img, 0, 0, width, height);
+      resolve({ dataUrl: canvas.toDataURL("image/jpeg", quality), width, height });
+      URL.revokeObjectURL(img.src);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(img.src);
+      reject(new Error("图片处理失败"));
+    };
+    img.src = URL.createObjectURL(blob);
+  });
+}
+
+function dataUrlToUint8Array(dataUrl: string) {
+  const base64 = dataUrl.split(",")[1] || "";
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+function tokenText(token: any): string {
+  if (!token) return "";
+  if (typeof token === "string") return stripHtml(token);
+  if (typeof token.text === "string") return stripHtml(token.text);
+  if (Array.isArray(token.tokens)) return token.tokens.map(tokenText).join("");
+  return "";
+}
+
+function stripMarkdownImages(text: string) {
+  return text.replace(/!\[[^\]]*\]\([^)]*\)/g, "").trim();
+}
+
+export async function buildNeteaseDocHtml(variant: PlatformVariant) {
+  const bodyHtml = await inlineFeishuImages(marked.parse(variant.bodyMarkdown) as string);
+  const tags = variant.tags.length ? `<p class="tags">标签：${variant.tags.join("、")}</p>` : "";
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>${escapeXml(variant.title)}</title>
+  <style>
+    body { font-family: "Microsoft YaHei", Arial, sans-serif; line-height: 1.75; color: #222; font-size: 16px; }
+    h1 { font-size: 26px; line-height: 1.4; margin: 0 0 18px; }
+    h2 { font-size: 22px; margin: 28px 0 12px; }
+    h3 { font-size: 18px; margin: 22px 0 10px; }
+    p { margin: 12px 0; }
+    img { max-width: 100%; height: auto; display: block; margin: 16px auto; }
+    table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+    th, td { border: 1px solid #d9d9d9; padding: 8px 12px; text-align: left; vertical-align: top; }
+    th { background: #f6f8fa; font-weight: 700; }
+    blockquote { margin: 16px 0; padding: 8px 16px; border-left: 4px solid #d9d9d9; color: #666; }
+    code { font-family: Consolas, monospace; background: #f5f5f5; padding: 2px 4px; }
+    pre { background: #f5f5f5; padding: 12px; overflow: auto; }
+    .summary { color: #555; background: #f7f8fa; padding: 12px 16px; border-radius: 6px; }
+    .tags { color: #666; }
+  </style>
+</head>
+<body>
+  <h1>${escapeXml(variant.title)}</h1>
+  ${variant.summary ? `<p class="summary">${escapeXml(variant.summary)}</p>` : ""}
+  ${bodyHtml}
+  ${tags}
+</body>
+</html>`;
+}
+
+export function buildManualPublishText(variant: PlatformVariant) {
+  const article = {
+    title: variant.title,
+    desc: variant.summary,
+    summary: variant.summary,
+    content: marked.parse(variant.bodyMarkdown) as string,
+    html: marked.parse(variant.bodyMarkdown) as string,
+    markdown: variant.bodyMarkdown,
+    tags: variant.tags,
+    draft: true,
+    openDraft: true,
+  };
+  return `# ${variant.title}\n\n${variant.summary}\n\n${variant.bodyMarkdown}\n\n标签：${variant.tags.join("、")}\n\nWechatsync JSON：\n${JSON.stringify(article, null, 2)}`;
+}
+
+export async function syncVariantToDraft(variant: PlatformVariant) {
+  const ready = await ensureWechatSyncBridge();
+  if (!ready) {
+    throw new Error("article-syncjs 未加载成功，已为你准备手动发布内容。");
+  }
+
+  const article = await buildWechatSyncArticle(variant);
+
+  const result = await (window as WechatSyncWindow).syncPost!(article);
+  return {
+    taskId: result?.taskId,
+    url: result?.draftUrl || result?.url,
+    message: result?.message,
+  };
+}
