@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { generateJson } from "@/lib/ai/anthropic";
-import { buildPlatformVariantPrompt } from "@/lib/ai/prompts";
+import { buildPlatformIndependentRetryPrompt, buildPlatformVariantPrompt } from "@/lib/ai/prompts";
 import { getPromptTemplate } from "@/lib/ai/promptTemplates";
 import { platformVariantOutputSchema } from "@/lib/ai/schemas";
+import { findSourceNarrationPhrases } from "@/lib/ai/geoStyleValidation";
 import { getContentDetail, updateContent } from "@/lib/storage/contentRepository";
 import { createId, readCollection, storeFiles, writeCollection } from "@/lib/storage/jsonStore";
 import type { Platform, PlatformVariant } from "@/types/geo";
@@ -136,10 +137,22 @@ export async function POST(request: Request, { params }: { params: { id: string 
     }
 
     const template = await getPromptTemplate(platform);
-    const result = await generateJson(
-      buildPlatformVariantPrompt(detail.content, detail.geoOptimization, platform, template.content),
+    const prompt = buildPlatformVariantPrompt(detail.content, detail.geoOptimization, platform, template.content);
+    let result = await generateJson(
+      prompt,
       platformVariantOutputSchema,
     );
+    const narrationPhrases = findSourceNarrationPhrases(result.data);
+    if (narrationPhrases.length) {
+      result = await generateJson(
+        buildPlatformIndependentRetryPrompt(prompt, narrationPhrases),
+        platformVariantOutputSchema,
+      );
+      const retryNarrationPhrases = findSourceNarrationPhrases(result.data);
+      if (retryNarrationPhrases.length) {
+        throw new Error(`平台成稿仍包含转述输入稿的话术：${retryNarrationPhrases.join("、")}，请重新生成该平台版本。`);
+      }
+    }
 
     // AI 生成后恢复源文章中的图片引用：
     // 1. 修复 AI 改写的飞书内部 URL → /api/feishu-image/{token}

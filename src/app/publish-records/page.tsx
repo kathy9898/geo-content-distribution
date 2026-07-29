@@ -53,7 +53,7 @@ export default function PublishRecordsPage() {
 
   return (
     <AppShell>
-      <PageTitle title="发布记录" description="集中查看所有内容的发布链接与发布状态。" />
+      <PageTitle title="自动发布记录" description="集中查看所有内容的发布链接与发布状态。" />
       <Card>
         <Table
           rowKey="id"

@@ -11,11 +11,17 @@ type ContentWithVariantCount = ContentItem & { variantCount: number };
 export default function HomePage() {
   const [contents, setContents] = useState<ContentWithVariantCount[]>([]);
   const [loading, setLoading] = useState(true);
+  const [publishedCount, setPublishedCount] = useState(0);
 
   useEffect(() => {
-    fetch("/api/contents")
-      .then((res) => res.json())
-      .then((data) => setContents(Array.isArray(data) ? data : []))
+    Promise.all([
+      fetch("/api/contents").then((res) => res.json()),
+      fetch("/api/publish-records").then((res) => res.json()),
+    ])
+      .then(([data, records]) => {
+        setContents(Array.isArray(data) ? data : []);
+        setPublishedCount(Array.isArray(records) ? records.length : 0);
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -50,13 +56,13 @@ export default function HomePage() {
     <AppShell>
       <PageTitle
         title="GEO 内容中台"
-        description="原文 → GEO 调优 → 平台改写 → 一键分发 → 记录链接"
+        description="原文 → GEO 调优 → 平台改写 → 真人感润色 → 引用验证 → 自动发布记录"
       />
 
       <Row gutter={16} style={{ marginBottom: 24 }}>
         <Col span={8}><Card className="stat-card animate-in"><Statistic title="主文数量" value={contents.length} /></Card></Col>
         <Col span={8}><Card className="stat-card animate-in animate-in-delay-1"><Statistic title="已 GEO 调优" value={contents.filter((item) => item.status !== "draft").length} /></Card></Col>
-        <Col span={8}><Card className="stat-card animate-in animate-in-delay-2"><Statistic title="平台版本总数" value={contents.reduce((sum, c) => sum + (c.variantCount || 0), 0)} /></Card></Col>
+        <Col span={8}><Card className="stat-card animate-in animate-in-delay-2"><Statistic title="已发布数" value={publishedCount} /></Card></Col>
       </Row>
 
       <Card
@@ -72,17 +78,18 @@ export default function HomePage() {
             loading={loading}
             dataSource={contents}
             pagination={false}
+            scroll={{ x: 880 }}
             columns={[
               {
                 title: "标题",
                 dataIndex: "title",
+                ellipsis: true,
                 render: (text, record) => <Link href={`/contents/${record.id}`}>{text}</Link>,
               },
-              { title: "品牌", dataIndex: "brandName", render: (text) => text || "-" },
-              { title: "关键词", dataIndex: "keywords", render: (tags: string[]) => <Space wrap>{tags.map((tag) => <Tag key={tag}>{tag}</Tag>)}</Space> },
-              { title: "状态", dataIndex: "status", render: (status) => <Tag color="blue">{statusMap[status] || status}</Tag> },
-              { title: "更新时间", dataIndex: "updatedAt", render: (text) => new Date(text).toLocaleString() },
-              { title: "操作", render: (_, record) => <Space><Link href={`/contents/${record.id}`}><Typography.Link>进入工作流</Typography.Link></Link><Typography.Link type="danger" onClick={() => deleteContent(record)}>删除</Typography.Link></Space> },
+              { title: "关键词", dataIndex: "keywords", width: 220, render: (tags: string[]) => <Space wrap>{tags.map((tag) => <Tag key={tag}>{tag}</Tag>)}</Space> },
+              { title: "状态", dataIndex: "status", width: 130, render: (status) => <Tag color="blue">{statusMap[status] || status}</Tag> },
+              { title: "更新时间", dataIndex: "updatedAt", width: 180, render: (text) => new Date(text).toLocaleString() },
+              { title: "操作", width: 160, render: (_, record) => <Space><Link href={`/contents/${record.id}`}><Typography.Link>进入工作流</Typography.Link></Link><Typography.Link type="danger" onClick={() => deleteContent(record)}>删除</Typography.Link></Space> },
             ]}
           />
         )}

@@ -56,3 +56,21 @@ export async function generateJson<T>(prompt: string, schema: z.ZodSchema<T>, ma
   const json = JSON.parse(extractJson(text));
   return { data: schema.parse(json), model };
 }
+
+export async function generateTextStream(prompt: string, maxTokens?: number) {
+  const model = process.env.OPENAI_MODEL || process.env.ANTHROPIC_MODEL || process.env.AI_MODEL || DEFAULT_MODEL;
+  const client = getClient();
+
+  return client.chat.completions.create({
+    model,
+    temperature: 0.3,
+    max_tokens: maxTokens || 16384,
+    stream: true,
+    messages: [
+      {
+        role: "user",
+        content: prompt,
+      },
+    ],
+  });
+}

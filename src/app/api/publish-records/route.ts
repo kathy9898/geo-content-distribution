@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { readCollection, storeFiles } from "@/lib/storage/jsonStore";
 import type { ContentItem, PlatformVariant, PublishRecord, PublishRecordWithContent } from "@/types/geo";
+import { detectPlatformFromUrl } from "@/types/geo";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,6 +20,8 @@ export async function GET() {
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
     .map((r) => ({
       ...r,
+      // 以 URL 为准重新推断平台，纠正历史里误判为知乎的思否等记录
+      platform: (detectPlatformFromUrl(r.publishUrl) || r.platform) as PublishRecordWithContent["platform"],
       // Prefer bookmarklet-captured title, then variant title, then content title, then fallback
       articleTitle: r.articleTitle
         || (r.variantId && variantTitleMap.get(r.variantId))

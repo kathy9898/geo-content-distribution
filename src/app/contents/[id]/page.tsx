@@ -10,10 +10,16 @@ function renderMarkdown(md: string): string {
   return html.replace(/feishu-image:\/\/([\w]+)/g, "/api/feishu-image/$1");
 }
 
+/** Highlight [建议补充：...] markers injected by GEO optimization for missing information. */
+function highlightSupplementMarkers(html: string): string {
+  return html.replace(/\[建议补充[：:]([^\]]+)\]/g, '<span style="background:#fff1b8;color:#ad6800;padding:0 4px;border-radius:4px;font-size:12px;">⚠ 建议补充：$1</span>');
+}
+
 import { Alert, Button, Card, Checkbox, Col, Descriptions, Divider, Form, Input, InputNumber, List, message, Modal, Popconfirm, Progress, Row, Select, Space, Spin, Switch, Table, Tabs, Tag, Typography } from "antd";
-import { FormatPainterOutlined } from "@ant-design/icons";
+import { CloseOutlined, CopyOutlined, ExportOutlined, FileTextOutlined } from "@ant-design/icons";
 import AppShell, { PageTitle } from "@/components/AppShell";
-import type { ContentDetail, ContentItem, CitationModelKey, CitationModelResult, CitationValidationRun, GeoChangePreview, GeoChecklist, GeoChecklistItem, GeoOptimization, Platform, PlatformVariant } from "@/types/geo";
+import HumanizePanel from "@/components/HumanizePanel";
+import type { ContentDetail, ContentItem, CitationModelKey, CitationModelResult, CitationValidationRun, GeoChangePreview, GeoChecklist, GeoChecklistItem, GeoDimensionScore, GeoOptimization, Platform, PlatformVariant } from "@/types/geo";
 import { platformLabels, detectPlatformFromUrl, citationModelLabels } from "@/types/geo";
 import { platformDraftUrls, ensureWechatSyncBridge, buildWechatSyncArticle, buildManualPublishText, buildNeteaseDocxBlob } from "@/lib/publish/wechatSyncBridge";
 
@@ -49,6 +55,7 @@ function safeJson<T>(value: string | undefined, fallback: T): T {
 
 function getChecklistItems(geo: GeoOptimization): GeoChecklistItem[] {
   if (geo.checklistItems?.length) return geo.checklistItems;
+  if (!geo.checklist) return [];
   return Object.entries(geo.checklist).map(([key, passed]) => ({
     key,
     label: checklistLabels[key as keyof GeoChecklist] || key,
@@ -74,7 +81,6 @@ export default function ContentDetailPage() {
   const [form] = Form.useForm();
   const [sourceForm] = Form.useForm();
   const [geoForm] = Form.useForm();
-  const [publishForm] = Form.useForm();
   const [validationLoading, setValidationLoading] = useState(false);
   const [validationVariantId, setValidationVariantId] = useState<string>("");
   const [validationModels, setValidationModels] = useState<CitationModelKey[]>(["doubao", "ernie", "deepseek", "kimi", "qwen"]);
@@ -343,23 +349,6 @@ export default function ContentDetailPage() {
       setActionLoading(undefined);
     }
   };
-
-  const addPublishRecord = async (values: Record<string, string>) => {
-    const res = await fetch(`/api/contents/${params.id}/publish-records`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(values),
-    });
-    if (res.ok) {
-      message.success("发布记录已保存");
-      publishForm.resetFields();
-      await loadDetail();
-    } else {
-      const data = await res.json();
-      message.error(data.message || "保存失败");
-    }
-  };
-
   const runCitationValidation = async () => {
     if (!validationVariantId) {
       message.warning("请先选择要验证的平台版本");
@@ -409,7 +398,7 @@ export default function ContentDetailPage() {
 
   return (
     <AppShell>
-      <PageTitle title={detail.content.title} description="原文 → GEO 调优 → 平台改写 → 一键分发 → 记录链接" />
+      <PageTitle title={detail.content.title} description="原文 → GEO 调优 → 平台改写 → 真人感润色 → 引用验证 → 自动发布记录" />
       <Tabs
         items={[
           {
@@ -477,18 +466,65 @@ export default function ContentDetailPage() {
                       <Typography.Paragraph>{geo.summary}</Typography.Paragraph>
                     </Card>
 
-                    <Card title="GEO 关键问题修正">
-                      <Row gutter={[16, 16]}>
-                        {checklistItems.map((item) => (
-                          <Col span={12} key={item.key}>
-                            <Card size="small" title={<Space><Tag color={item.passed ? "green" : "red"}>{item.passed ? "通过" : "待改进"}</Tag>{item.label}</Space>}>
-                              <Typography.Paragraph><b>诊断优化：</b>{item.reason}</Typography.Paragraph>
-                              <Typography.Paragraph type="secondary"><b>后续建议：</b>{item.suggestion}</Typography.Paragraph>
-                            </Card>
-                          </Col>
-                        ))}
-                      </Row>
-                    </Card>
+                    {geo.dimensionScores?.length ? (
+                      <Card
+                        title="GEO 12 维度评分报告"
+                        extra={geo.riskCheck ? (
+                          <Space size={4} wrap>
+                            <Tag color={geo.riskCheck.keywordStuffing ? "red" : "green"}>{geo.riskCheck.keywordStuffing ? "关键词堆砌风险" : "无关键词堆砌"}</Tag>
+                            <Tag color={geo.riskCheck.overOptimization ? "red" : "green"}>{geo.riskCheck.overOptimization ? "过度优化风险" : "优化适度"}</Tag>
+                            <Tag color={geo.riskCheck.fabrication ? "red" : "green"}>{geo.riskCheck.fabrication ? "疑似编造信息" : "无编造信息"}</Tag>
+                          </Space>
+                        ) : undefined}
+                      >
+                        <Table<GeoDimensionScore>
+                          dataSource={geo.dimensionScores}
+                          rowKey="key"
+                          pagination={false}
+                          size="small"
+                          columns={[
+                            { title: "层级", dataIndex: "layer", width: 130, render: (value: string) => <Tag color="blue">{value}</Tag> },
+                            { title: "维度", dataIndex: "label", width: 140, render: (value: string) => <Typography.Text strong>{value}</Typography.Text> },
+                            { title: "权重", dataIndex: "weight", width: 70, align: "center" },
+                            { title: "原文", dataIndex: "beforeScore", width: 80, align: "center", render: (value: number, record) => <Typography.Text type={value < record.weight * 0.6 ? "danger" : undefined}>{value}</Typography.Text> },
+                            { title: "优化后", dataIndex: "afterScore", width: 90, align: "center", render: (value: number, record) => <Typography.Text strong type={value >= record.weight * 0.8 ? "success" : value < record.weight * 0.6 ? "danger" : "warning"}>{value}</Typography.Text> },
+                            { title: "提升", key: "lift", width: 80, align: "center", render: (_, record) => { const lift = record.afterScore - record.beforeScore; return <Typography.Text type={lift > 0 ? "success" : "secondary"}>{lift > 0 ? `+${lift}` : lift}</Typography.Text>; } },
+                            { title: "诊断与改造说明", dataIndex: "note" },
+                          ]}
+                        />
+                        {geo.riskCheck?.note ? <Typography.Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 0 }}>风险检查：{geo.riskCheck.note}</Typography.Paragraph> : null}
+                      </Card>
+                    ) : null}
+
+                    {!geo.dimensionScores?.length && checklistItems.length ? (
+                      <Card title="GEO 关键问题修正">
+                        <Row gutter={[16, 16]}>
+                          {checklistItems.map((item) => (
+                            <Col span={12} key={item.key}>
+                              <Card size="small" title={<Space><Tag color={item.passed ? "green" : "red"}>{item.passed ? "通过" : "待改进"}</Tag>{item.label}</Space>}>
+                                <Typography.Paragraph><b>诊断优化：</b>{item.reason}</Typography.Paragraph>
+                                <Typography.Paragraph type="secondary"><b>后续建议：</b>{item.suggestion}</Typography.Paragraph>
+                              </Card>
+                            </Col>
+                          ))}
+                        </Row>
+                      </Card>
+                    ) : null}
+
+                    {geo.supplementSuggestions?.length ? (
+                      <Card title="待补充内容">
+                        <Alert type="warning" showIcon style={{ marginBottom: 12 }} message="以下位置因原文信息不足，正文已用 [建议补充：...] 标注。请补充真实信息后重新执行 GEO 调优，或直接点击“编辑”修改正文。" />
+                        <List
+                          size="small"
+                          dataSource={geo.supplementSuggestions}
+                          renderItem={(item, index) => (
+                            <List.Item>
+                              <Typography.Text><Tag color="orange">{index + 1}</Tag><b>{item.location}</b>：{item.suggestion}</Typography.Text>
+                            </List.Item>
+                          )}
+                        />
+                      </Card>
+                    ) : null}
 
                     <Card title="修改预览：AI 优化了哪些地方">
                       {geo.changePreview?.length ? (
@@ -508,7 +544,7 @@ export default function ContentDetailPage() {
                     </Card>
 
                     <Card title="优化正文" extra={<Button onClick={() => openGeoEditor(geo)}>编辑</Button>}>
-                      <div className="markdown-preview" style={{ maxHeight: 400, overflowY: "auto", paddingRight: 8 }} dangerouslySetInnerHTML={{ __html: renderMarkdown(geo.bodyMarkdown) as string }} />
+                      <div className="markdown-preview" style={{ maxHeight: 400, overflowY: "auto", paddingRight: 8 }} dangerouslySetInnerHTML={{ __html: highlightSupplementMarkers(renderMarkdown(geo.bodyMarkdown) as string) }} />
                     </Card>
                   </Space>
                 ) : <Alert message="尚未执行 GEO 调优" type="info" showIcon />}
@@ -576,8 +612,13 @@ export default function ContentDetailPage() {
             ),
           },
           {
+            key: "humanize",
+            label: "4. 真人感润色",
+            children: <HumanizePanel detail={detail} reload={loadDetail} />,
+          },
+          {
             key: "citation",
-            label: "4. AI 引用验证",
+            label: "5. AI 引用验证",
             children: (
               <Space direction="vertical" size="large" style={{ width: "100%" }}>
                 <Card title="运行验证">
@@ -725,7 +766,7 @@ export default function ContentDetailPage() {
           },
           {
             key: "publish",
-            label: "5. 发布记录",
+            label: "6. 自动发布记录",
             children: (
               <Space direction="vertical" size="large" style={{ width: "100%" }}>
                 <Card title="快速记录发布链接" size="small">
@@ -753,44 +794,6 @@ export default function ContentDetailPage() {
                     <Typography.Text type="secondary" style={{ fontSize: 12 }}>提示：直接点击无效，请拖拽到书签栏使用</Typography.Text>
                   </Space>
                 </Card>
-                <Row gutter={16}>
-                  <Col span={10}>
-                    <Card title="手动记录发布链接">
-                      <Form form={publishForm} layout="vertical" onFinish={addPublishRecord}>
-                        <Form.Item name="platform" label="平台"> <Select allowClear placeholder="选择平台（留空则自动识别）" options={Object.entries(platformLabels).map(([value, label]) => ({ value, label }))} /> </Form.Item>
-                        <Form.Item name="variantId" label="对应平台版本"> <Select allowClear options={detail.variants.map((item) => ({ value: item.id, label: `${platformLabels[item.platform]} - ${item.title}` }))} /> </Form.Item>
-                        <Form.Item name="publishUrl" label="发布链接" rules={[{ required: true }]}><Input /></Form.Item>
-                        <Form.Item name="note" label="备注"><Input.TextArea rows={3} /></Form.Item>
-                        <Button type="primary" htmlType="submit">保存发布记录</Button>
-                      </Form>
-                    </Card>
-                  </Col>
-                  <Col span={14}>
-                    <Card title="已记录链接">
-                      <List
-                        dataSource={detail.publishRecords}
-                        renderItem={(item) => (
-                          <List.Item>
-                            <Space direction="vertical" style={{ width: "100%" }}>
-                              <Space>
-                                <Tag color={item.syncStatus === "draft_synced" ? "cyan" : item.syncStatus === "failed" ? "red" : "green"}>
-                                  {item.syncStatus === "published" ? "已发布" : item.syncStatus === "manual" ? "已发布" : item.syncStatus === "draft_synced" ? "草稿已同步" : item.syncStatus === "failed" ? "同步失败" : "已发布"}
-                                </Tag>
-                                <Tag>{platformLabels[item.platform]}</Tag>
-                                {item.articleTitle && <Typography.Text strong>{item.articleTitle}</Typography.Text>}
-                              </Space>
-                              <a href={item.publishUrl} target="_blank" rel="noopener" style={{ fontSize: 13 }}>{item.publishUrl}</a>
-                              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                                {new Date(item.publishedAt).toLocaleString()} {item.note}
-                                {item.syncTaskId ? `｜任务 ${item.syncTaskId}` : ""}
-                              </Typography.Text>
-                            </Space>
-                          </List.Item>
-                        )}
-                      />
-                    </Card>
-                  </Col>
-                </Row>
               </Space>
             ),
           },
@@ -846,23 +849,75 @@ export default function ContentDetailPage() {
       </Modal>
 
       <Modal
-        title={manualPublishing ? `手动同步到${platformLabels[manualPublishing.variant.platform]}草稿` : "手动同步草稿"}
+        open={!!manualPublishing}
         onCancel={() => setManualPublishing(null)}
-        width={900}
-        footer={[
-          <Button key="copy" type="primary" onClick={copyManualPublishText}>复制内容</Button>,
-          <Button key="open" onClick={openManualDraftPage}>打开草稿页</Button>,
-          <Button key="close" onClick={() => setManualPublishing(null)}>关闭</Button>,
-        ]}
+        width={760}
+        footer={null}
+        closable={false}
+        centered
+        styles={{
+          content: { borderRadius: 22, padding: 0, overflow: "hidden", boxShadow: "0 24px 70px rgba(15, 23, 42, 0.22)" },
+          body: { padding: 0 },
+          mask: { backgroundColor: "rgba(15, 23, 42, 0.38)", backdropFilter: "blur(2px)" },
+        }}
       >
-        <Alert
-          type="warning"
-          showIcon
-          message="未检测到 Wechatsync 网页桥接"
-          description="已为你准备好可复制内容和 Wechatsync JSON。请复制后粘贴到已打开的平台草稿页，后续如果插件提供网页桥接接口，可自动同步。"
-          style={{ marginBottom: 16 }}
-        />
-        <Input.TextArea value={manualPublishing?.text} rows={18} readOnly />
+        <div style={{ padding: "28px 30px 24px", background: "linear-gradient(180deg, #f8fbff 0%, #ffffff 32%)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 16, marginBottom: 24 }}>
+            <div>
+              <Typography.Title level={3} style={{ margin: 0, color: "#111827", fontSize: 24 }}>同步文章草稿</Typography.Title>
+              <Typography.Text type="secondary">插件桥接未连接，已为你整理好手动同步内容</Typography.Text>
+            </div>
+            <Button
+              type="text"
+              shape="circle"
+              icon={<CloseOutlined />}
+              onClick={() => setManualPublishing(null)}
+              style={{ color: "#6b7280" }}
+            />
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 18, padding: 18, border: "1px solid #e5edff", borderRadius: 18, background: "#ffffff", boxShadow: "0 10px 30px rgba(37, 99, 235, 0.08)", marginBottom: 16 }}>
+            <Space size={14} align="center">
+              <div style={{ width: 46, height: 46, borderRadius: 14, display: "grid", placeItems: "center", background: "linear-gradient(135deg, #e8f1ff 0%, #dbeafe 100%)", color: "#2563eb", fontWeight: 700, fontSize: 18 }}>
+                {manualPublishing ? platformLabels[manualPublishing.variant.platform].slice(0, 1) : "草"}
+              </div>
+              <div>
+                <Typography.Text strong style={{ display: "block", color: "#111827", fontSize: 16 }}>
+                  {manualPublishing ? platformLabels[manualPublishing.variant.platform] : "目标平台"}
+                </Typography.Text>
+                <Typography.Text type="secondary" style={{ fontSize: 13 }}>
+                  {manualPublishing?.variant.title || detail.content.title}
+                </Typography.Text>
+              </div>
+            </Space>
+            <Tag color="processing" icon={<FileTextOutlined />} style={{ borderRadius: 999, padding: "4px 10px", marginInlineEnd: 0 }}>
+              待手动同步
+            </Tag>
+          </div>
+
+          <div style={{ padding: "12px 14px", borderRadius: 14, background: "#fff7ed", border: "1px solid #fed7aa", color: "#9a3412", fontSize: 13, marginBottom: 18 }}>
+            未检测到 Wechatsync 网页桥接。请复制下方内容，打开平台草稿页后粘贴发布；后续桥接恢复时可自动同步。
+          </div>
+
+          <div style={{ border: "1px solid #e5e7eb", borderRadius: 16, overflow: "hidden", background: "#f9fafb" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderBottom: "1px solid #e5e7eb", background: "#ffffff" }}>
+              <Typography.Text strong>草稿内容</Typography.Text>
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>Markdown / Wechatsync JSON</Typography.Text>
+            </div>
+            <Input.TextArea
+              value={manualPublishing?.text}
+              rows={10}
+              readOnly
+              style={{ border: 0, borderRadius: 0, resize: "none", background: "#f9fafb", fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace", fontSize: 13, lineHeight: 1.65 }}
+            />
+          </div>
+
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 22 }}>
+            <Button onClick={() => setManualPublishing(null)}>关闭</Button>
+            <Button icon={<ExportOutlined />} onClick={openManualDraftPage}>打开草稿页</Button>
+            <Button type="primary" icon={<CopyOutlined />} onClick={copyManualPublishText}>复制内容</Button>
+          </div>
+        </div>
       </Modal>
 
       <Modal

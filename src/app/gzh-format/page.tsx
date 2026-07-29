@@ -1,200 +1,277 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Card, List, Spin, Typography, Input, Empty, Tabs, Alert, Button, Form, Space, message,
+  Alert, Button, Card, Input, Select, Space, Spin, Typography, Upload, message,
 } from "antd";
 import {
-  FormatPainterOutlined, FileTextOutlined, ImportOutlined, EditOutlined,
+  CopyOutlined, DownloadOutlined, FormatPainterOutlined, RobotOutlined, ThunderboltOutlined,
 } from "@ant-design/icons";
 import AppShell, { PageTitle } from "@/components/AppShell";
+import {
+  GZH_TEST_THEME_OPTIONS, GZH_TEST_THEMES, GzhTestThemeId, renderGzhTestArticle,
+} from "@/lib/gzh-test/engine";
 
-interface ContentItem {
-  id: string;
-  title: string;
-  brandName?: string;
-  createdAt: string;
-  variantCount?: number;
+function stripCodeFence(md: string) {
+  const trimmed = md.trim();
+  const match = trimmed.match(/^```(?:markdown|md)?\s*\n([\s\S]*?)\n?```\s*$/);
+  return match ? match[1].trim() : trimmed;
 }
 
-export default function GzhFormatEntryPage() {
-  const [contents, setContents] = useState<ContentItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const [feishuLoading, setFeishuLoading] = useState(false);
-  const router = useRouter();
+export default function GzhFormatTestPage() {
+  const [themeId, setThemeId] = useState<GzhTestThemeId>("moyu");
+  const [title, setTitle] = useState("");
+  const [author, setAuthor] = useState("");
+  const [source, setSource] = useState("");
+  const [html, setHtml] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const previewRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    fetch("/api/contents")
-      .then((res) => res.json())
-      .then((data) => {
-        setContents(data);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
+  const render = useCallback((md: string, theme: GzhTestThemeId, t: string, a: string) => {
+    if (!md.trim()) {
+      message.warning("请先粘贴或上传正文");
+      return;
+    }
+    setHtml(renderGzhTestArticle({ markdown: md, themeId: theme, title: t, author: a }));
   }, []);
 
-  const filtered = search
-    ? contents.filter((c) => c.title.toLowerCase().includes(search.toLowerCase()))
-    : contents;
+  useEffect(() => {
+    if (html && source.trim()) {
+      setHtml(renderGzhTestArticle({ markdown: source, themeId, title, author }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [themeId, title, author]);
 
-  /** 飞书导入：获取 Markdown 后跳转到编辑器 */
-  const handleFeishuImport = async (values: { url: string }) => {
-    setFeishuLoading(true);
+  const handleAiNormalize = async () => {
+    const text = source.trim();
+    if (!text) {
+      message.warning("请先粘贴或上传正文");
+      return;
+    }
+    setAiLoading(true);
+    setHtml("");
     try {
-      const res = await fetch("/api/gzh-format/import-feishu", {
+      const res = await fetch("/api/gzh-format/normalize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: values.url }),
+        body: JSON.stringify({ text }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "飞书导入失败");
+      if (!res.ok || !res.body) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `AI 归一化失败（HTTP ${res.status}）`);
+      }
 
-      // 通过 sessionStorage 传递给编辑器页
-      sessionStorage.setItem("gzh-format-markdown", data.markdown);
-      sessionStorage.setItem("gzh-format-title", data.title);
-      sessionStorage.setItem("gzh-format-source", "feishu");
-      router.push("/gzh-format/editor?source=feishu");
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        setSource(buffer);
+      }
+
+      const finalMd = stripCodeFence(buffer);
+      setSource(finalMd);
+      render(finalMd, themeId, title, author);
+      message.success("AI 整理完成，已自动渲染预览");
     } catch (error) {
-      message.error(error instanceof Error ? error.message : "飞书导入失败");
+      message.error(error instanceof Error ? error.message : "AI 归一化失败");
     } finally {
-      setFeishuLoading(false);
+      setAiLoading(false);
     }
   };
 
-  /** Markdown 粘贴：直接跳转到编辑器 */
-  const handleMarkdownPaste = () => {
-    const textarea = document.querySelector<HTMLTextAreaElement>("#gzh-markdown-input");
-    const markdown = textarea?.value?.trim();
-    if (!markdown) {
-      message.warning("请先粘贴 Markdown 正文");
+  const copyRich = async () => {
+    const node = previewRef.current?.firstElementChild as HTMLElement | null;
+    if (!node) {
+      message.warning("请先生成预览");
       return;
     }
-    sessionStorage.setItem("gzh-format-markdown", markdown);
-    sessionStorage.setItem("gzh-format-title", "");
-    sessionStorage.setItem("gzh-format-source", "markdown");
-    router.push("/gzh-format/editor?source=markdown");
+    const ok = () => message.success("已复制，去公众号后台 Ctrl/⌘+V 粘贴");
+
+    const fallback = () => {
+      const range = document.createRange();
+      const selection = window.getSelection();
+      if (!selection) return;
+      range.selectNode(node);
+      selection.removeAllRanges();
+      selection.addRange(range);
+      try {
+        document.execCommand("copy");
+        ok();
+      } catch {
+        message.error("复制失败，请在预览区手动全选复制");
+      }
+      selection.removeAllRanges();
+    };
+
+    if (navigator.clipboard && window.ClipboardItem) {
+      try {
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            "text/html": new Blob([node.outerHTML], { type: "text/html" }),
+            "text/plain": new Blob([node.innerText], { type: "text/plain" }),
+          }),
+        ]);
+        ok();
+        return;
+      } catch {
+        fallback();
+        return;
+      }
+    }
+    fallback();
+  };
+
+  const downloadHtml = () => {
+    const node = previewRef.current?.firstElementChild as HTMLElement | null;
+    if (!node) {
+      message.warning("请先生成预览");
+      return;
+    }
+    const blob = new Blob([node.outerHTML], { type: "text/html;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `公众号排版_${GZH_TEST_THEMES[themeId].name}.html`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
+  const clearAll = () => {
+    setSource("");
+    setTitle("");
+    setAuthor("");
+    setHtml("");
   };
 
   return (
     <AppShell>
-      <PageTitle title="公众号排版" description="选择内容来源，进入公众号排版编辑器。" />
-
-      <Tabs
-        defaultActiveKey="existing"
-        size="large"
-        items={[
-          {
-            key: "existing",
-            label: (
-              <span><FileTextOutlined /> 选择已有文章</span>
-            ),
-            children: (
-              <Card>
-                <Input.Search
-                  placeholder="搜索文章标题"
-                  allowClear
-                  style={{ marginBottom: 16, maxWidth: 400 }}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
-                {loading ? (
-                  <div style={{ textAlign: "center", padding: 40 }}><Spin size="large" /></div>
-                ) : filtered.length === 0 ? (
-                  <Empty description="暂无文章，请先新建主文或使用其他渠道" />
-                ) : (
-                  <List
-                    dataSource={filtered}
-                    renderItem={(item) => (
-                      <List.Item
-                        style={{ cursor: "pointer" }}
-                        onClick={() => router.push(`/contents/${item.id}/gzh-format`)}
-                      >
-                        <List.Item.Meta
-                          avatar={<FormatPainterOutlined style={{ fontSize: 20, color: "#fa541c" }} />}
-                          title={item.title}
-                          description={`${item.brandName || "未设品牌"} · ${new Date(item.createdAt).toLocaleDateString()}`}
-                        />
-                      </List.Item>
-                    )}
-                  />
-                )}
-              </Card>
-            ),
-          },
-          {
-            key: "feishu",
-            label: (
-              <span><ImportOutlined /> 飞书导入</span>
-            ),
-            children: (
-              <Card>
-                <Alert
-                  style={{ marginBottom: 16 }}
-                  type="info"
-                  showIcon
-                  message="粘贴飞书文档链接，系统会读取文档内容并转换成 Markdown，然后直接进入排版编辑器。"
-                />
-                <Form layout="vertical" onFinish={handleFeishuImport}>
-                  <Form.Item
-                    name="url"
-                    label="飞书文档链接"
-                    rules={[{ required: true, message: "请输入飞书文档链接" }]}
-                  >
-                    <Input
-                      placeholder="https://xxx.feishu.cn/docx/xxxx 或 https://xxx.feishu.cn/wiki/xxxx"
-                      size="large"
-                    />
-                  </Form.Item>
-                  <Space>
-                    <Button
-                      type="primary"
-                      size="large"
-                      htmlType="submit"
-                      loading={feishuLoading}
-                      icon={<ImportOutlined />}
-                    >
-                      {feishuLoading ? "导入中..." : "导入并排版"}
-                    </Button>
-                  </Space>
-                </Form>
-              </Card>
-            ),
-          },
-          {
-            key: "markdown",
-            label: (
-              <span><EditOutlined /> 粘贴 Markdown</span>
-            ),
-            children: (
-              <Card>
-                <Alert
-                  style={{ marginBottom: 16 }}
-                  type="info"
-                  showIcon
-                  message="直接粘贴 Markdown 格式的正文内容，然后进入排版编辑器。"
-                />
-                <Input.TextArea
-                  id="gzh-markdown-input"
-                  rows={12}
-                  placeholder={"# 文章标题\n\n正文内容，支持 **加粗**、## 章节、> 引用、- 列表等 Markdown 语法...\n\n## 第一章\n\n这里是正文内容。"}
-                  style={{ fontFamily: "monospace", fontSize: 13, marginBottom: 16 }}
-                />
-                <Space>
-                  <Button
-                    type="primary"
-                    size="large"
-                    onClick={handleMarkdownPaste}
-                    icon={<EditOutlined />}
-                  >
-                    开始排版
-                  </Button>
-                </Space>
-              </Card>
-            ),
-          },
-        ]}
+      <PageTitle
+        title="公众号排版"
+        description="AI 归一化文章结构 + 六主题排版引擎：粘贴正文 → AI 智能整理 → 选主题渲染 → 一键复制到公众号后台。"
       />
+
+      <div style={{ display: "flex", gap: 20, alignItems: "flex-start" }}>
+        <Card style={{ width: 430, flexShrink: 0 }} styles={{ body: { padding: 20 } }}>
+          <Typography.Text strong>选择公众号风格</Typography.Text>
+          <Select
+            style={{ width: "100%", marginTop: 8 }}
+            value={themeId}
+            onChange={(v) => setThemeId(v as GzhTestThemeId)}
+            options={GZH_TEST_THEME_OPTIONS.map((o) => ({ value: o.id, label: o.label }))}
+          />
+          <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginTop: 6, marginBottom: 0 }}>
+            每种风格自动套用标题、导读、章节编号、关键词下划线、引用块、代码块、签名区。
+          </Typography.Paragraph>
+
+          <Typography.Text strong style={{ display: "block", marginTop: 16 }}>文章标题</Typography.Text>
+          <Input
+            style={{ marginTop: 8 }}
+            placeholder="不填则自动读取 # 一级标题"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+          />
+
+          <Typography.Text strong style={{ display: "block", marginTop: 16 }}>作者 / 团队</Typography.Text>
+          <Input
+            style={{ marginTop: 8 }}
+            placeholder="例如：卡兹克 / UCloud 团队"
+            value={author}
+            onChange={(e) => setAuthor(e.target.value)}
+          />
+
+          <Typography.Text strong style={{ display: "block", marginTop: 16 }}>上传 Markdown / TXT</Typography.Text>
+          <Upload
+            accept=".md,.txt,text/plain,text/markdown"
+            showUploadList={false}
+            beforeUpload={(file) => {
+              const reader = new FileReader();
+              reader.onload = () => {
+                setSource(String(reader.result || ""));
+                message.success("文件已读取，可点击 AI 智能整理或直接渲染");
+              };
+              reader.readAsText(file, "utf-8");
+              return false;
+            }}
+          >
+            <Button style={{ marginTop: 8 }}>选择文件</Button>
+          </Upload>
+
+          <Typography.Text strong style={{ display: "block", marginTop: 16 }}>粘贴正文</Typography.Text>
+          <Input.TextArea
+            style={{ marginTop: 8, lineHeight: 1.65 }}
+            rows={14}
+            placeholder={"支持 Markdown：# 标题、## 章节、### 小标题、> 引用、- 列表、```代码块```、**加粗**、==高亮==、++下划线++、![图片说明](图片URL)\n\n也可以直接粘贴纯文本，点「AI 智能整理排版」自动归一化。"}
+            value={source}
+            onChange={(e) => setSource(e.target.value)}
+            disabled={aiLoading}
+          />
+
+          <Space wrap style={{ marginTop: 16 }}>
+            <Button
+              type="primary"
+              icon={<RobotOutlined />}
+              loading={aiLoading}
+              onClick={handleAiNormalize}
+            >
+              {aiLoading ? "AI 正在智能排版中…" : "AI 智能整理排版"}
+            </Button>
+            <Button
+              icon={<ThunderboltOutlined />}
+              disabled={aiLoading}
+              onClick={() => render(source, themeId, title, author)}
+            >
+              直接渲染
+            </Button>
+            <Button disabled={aiLoading} onClick={clearAll}>清空</Button>
+          </Space>
+
+          <Alert
+            style={{ marginTop: 16 }}
+            type="info"
+            showIcon
+            message="正确流程"
+            description="生成预览 → 点右上角「复制到公众号」→ 打开公众号后台 → Ctrl/⌘+V。不要把 HTML 源码直接粘到公众号后台。"
+          />
+        </Card>
+
+        <div style={{ flex: 1, minWidth: 0, position: "relative" }}>
+          <Space style={{ position: "absolute", top: 16, right: 16, zIndex: 9 }}>
+            <Button type="primary" icon={<CopyOutlined />} onClick={copyRich} disabled={!html}>
+              复制到公众号
+            </Button>
+            <Button icon={<DownloadOutlined />} onClick={downloadHtml} disabled={!html}>
+              下载 HTML
+            </Button>
+          </Space>
+
+          <Card
+            style={{ minHeight: 480 }}
+            styles={{ body: { padding: "40px 24px" } }}
+          >
+            {aiLoading ? (
+              <div style={{ textAlign: "center", padding: "80px 0" }}>
+                <Spin size="large" />
+                <Typography.Paragraph type="secondary" style={{ marginTop: 16 }}>
+                  AI 正在智能排版中，左侧正文区可实时看到生成进度…
+                </Typography.Paragraph>
+              </div>
+            ) : html ? (
+              <div style={{ maxWidth: 720, margin: "0 auto", background: "#fff" }}>
+                <div ref={previewRef} dangerouslySetInnerHTML={{ __html: html }} />
+              </div>
+            ) : (
+              <div style={{ textAlign: "center", padding: "80px 0", color: "#9ca3af" }}>
+                <FormatPainterOutlined style={{ fontSize: 40 }} />
+                <Typography.Paragraph type="secondary" style={{ marginTop: 16 }}>
+                  粘贴正文后点「AI 智能整理排版」或「直接渲染」，这里会生成公众号预览
+                </Typography.Paragraph>
+              </div>
+            )}
+          </Card>
+        </div>
+      </div>
     </AppShell>
   );
 }

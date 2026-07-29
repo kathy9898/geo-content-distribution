@@ -17,6 +17,7 @@ import type { Platform, PlatformVariant } from "@/types/geo";
 
 const articleSyncCssUrl = "https://cdn.jsdelivr.net/gh/wechatsync/article-syncjs@latest/dist/styles.css";
 const articleSyncJsUrl = "https://cdn.jsdelivr.net/gh/wechatsync/article-syncjs@latest/dist/main.js";
+const wechatSyncThemeStyleId = "geo-wechatsync-modal-theme";
 
 const wechatSyncPlatformKeys: Record<Platform, string> = {
   zhihu: "zhihu",
@@ -29,6 +30,7 @@ const wechatSyncPlatformKeys: Record<Platform, string> = {
   netease: "netease",
   wechat: "wechat",
   cto51: "51cto",
+  segmentfault: "segmentfault",
 };
 
 export const platformDraftUrls: Record<Platform, string> = {
@@ -42,6 +44,7 @@ export const platformDraftUrls: Record<Platform, string> = {
   netease: "https://mp.163.com/wemedia/write/article",
   wechat: "https://mp.weixin.qq.com/",
   cto51: "https://blog.51cto.com/",
+  segmentfault: "https://segmentfault.com/write",
 };
 
 type WechatSyncResult = {
@@ -62,6 +65,254 @@ function loadStyleOnce(href: string) {
   link.rel = "stylesheet";
   link.href = href;
   document.head.appendChild(link);
+}
+
+function injectWechatSyncModalTheme() {
+  if (document.getElementById(wechatSyncThemeStyleId)) return;
+
+  const style = document.createElement("style");
+  style.id = wechatSyncThemeStyleId;
+  style.textContent = `
+    #synciconapp .el-dialog__wrapper {
+      background: rgba(15, 23, 42, 0.34) !important;
+      backdrop-filter: blur(8px);
+    }
+
+    #synciconapp .dialogClass .el-dialog {
+      width: min(720px, calc(100vw - 40px)) !important;
+      margin-top: 8vh !important;
+      border-radius: 22px !important;
+      overflow: hidden !important;
+      background: #ffffff !important;
+      box-shadow: 0 28px 80px rgba(15, 23, 42, 0.24), 0 8px 24px rgba(15, 23, 42, 0.12) !important;
+    }
+
+    #synciconapp .dialogClass .el-dialog__header {
+      position: relative;
+      padding: 28px 32px 20px !important;
+      border-bottom: 0 !important;
+      background: linear-gradient(135deg, #f8fbff 0%, #eef6ff 48%, #fff7ed 100%) !important;
+    }
+
+    #synciconapp .dialogClass .el-dialog__header::after {
+      content: "选择账号后，将文章同步为平台草稿";
+      display: block;
+      margin-top: 8px;
+      color: #64748b;
+      font-size: 14px;
+      font-weight: 400;
+      line-height: 1.5;
+    }
+
+    #synciconapp .dialogClass .el-dialog__title {
+      color: #0f172a !important;
+      font-size: 24px !important;
+      font-weight: 800 !important;
+      line-height: 1.25 !important;
+      letter-spacing: 0 !important;
+    }
+
+    #synciconapp .dialogClass .el-dialog__headerbtn {
+      top: 24px !important;
+      right: 26px !important;
+      width: 34px !important;
+      height: 34px !important;
+      border-radius: 999px !important;
+      background: rgba(255, 255, 255, 0.78) !important;
+      box-shadow: 0 1px 6px rgba(15, 23, 42, 0.08) !important;
+    }
+
+    #synciconapp .dialogClass .el-dialog__headerbtn .el-dialog__close {
+      color: #475569 !important;
+      font-weight: 700 !important;
+    }
+
+    #synciconapp .dialogClass .el-dialog__body {
+      padding: 24px 32px 8px !important;
+      color: #1f2937 !important;
+      background: #ffffff !important;
+    }
+
+    #synciconapp .syncpost-block {
+      display: grid !important;
+      grid-template-columns: 96px minmax(0, 1fr) !important;
+      gap: 18px !important;
+      align-items: center !important;
+      padding: 18px !important;
+      margin-bottom: 22px !important;
+      border: 1px solid #e2e8f0 !important;
+      border-radius: 18px !important;
+      background: #f8fafc !important;
+    }
+
+    #synciconapp .syncpost-block .el-aside {
+      width: 96px !important;
+      height: 96px !important;
+      border-radius: 18px !important;
+      overflow: hidden !important;
+      background: linear-gradient(135deg, #0ea5e9, #2563eb) !important;
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.28) !important;
+    }
+
+    #synciconapp .syncpost-block .el-aside::before {
+      content: "文";
+      display: flex;
+      width: 100%;
+      height: 100%;
+      align-items: center;
+      justify-content: center;
+      color: #ffffff;
+      font-size: 38px;
+      font-weight: 800;
+    }
+
+    #synciconapp .syncpost-block .el-aside img {
+      display: none !important;
+    }
+
+    #synciconapp .syncpost-block .el-main {
+      min-width: 0 !important;
+      padding: 0 !important;
+    }
+
+    #synciconapp .syncpost-block h5 {
+      color: #0f172a !important;
+      font-size: 17px !important;
+      line-height: 1.55 !important;
+      font-weight: 750 !important;
+      display: -webkit-box !important;
+      -webkit-line-clamp: 2 !important;
+      -webkit-box-orient: vertical !important;
+      overflow: hidden !important;
+      margin: 0 0 8px !important;
+    }
+
+    #synciconapp .syncpost-block p {
+      color: #64748b !important;
+      font-size: 13px !important;
+      line-height: 1.7 !important;
+      margin: 0 !important;
+      display: -webkit-box !important;
+      -webkit-line-clamp: 2 !important;
+      -webkit-box-orient: vertical !important;
+      overflow: hidden !important;
+    }
+
+    #synciconapp .dialogClass h6 {
+      margin: 0 0 12px !important;
+      color: #334155 !important;
+      font-size: 13px !important;
+      font-weight: 700 !important;
+    }
+
+    #synciconapp .all-pubaccounts {
+      display: grid !important;
+      grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+      gap: 12px !important;
+      max-height: 300px !important;
+      overflow: auto !important;
+      padding: 2px 4px 4px 2px !important;
+    }
+
+    #synciconapp .account-item {
+      margin: 0 !important;
+      line-height: 1.4 !important;
+      padding: 0 !important;
+      font-size: 14px !important;
+    }
+
+    #synciconapp .account-item .el-checkbox {
+      display: flex !important;
+      align-items: center !important;
+      width: 100% !important;
+      min-height: 52px !important;
+      margin: 0 !important;
+      padding: 12px 14px !important;
+      border: 1px solid #e2e8f0 !important;
+      border-radius: 14px !important;
+      background: #ffffff !important;
+      color: #334155 !important;
+      transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease !important;
+    }
+
+    #synciconapp .account-item .el-checkbox:hover,
+    #synciconapp .account-item .el-checkbox.is-checked {
+      border-color: #3b82f6 !important;
+      background: #f8fbff !important;
+      box-shadow: 0 8px 18px rgba(37, 99, 235, 0.10) !important;
+    }
+
+    #synciconapp .account-item .el-checkbox__label {
+      display: flex !important;
+      align-items: center !important;
+      min-width: 0 !important;
+      color: inherit !important;
+      line-height: 1.35 !important;
+      padding-left: 10px !important;
+    }
+
+    #synciconapp .account-item img.icon {
+      flex: 0 0 auto !important;
+      width: 22px !important;
+      height: 22px !important;
+      margin-right: 8px !important;
+      border-radius: 6px !important;
+      vertical-align: middle !important;
+    }
+
+    #synciconapp .dialogClass .el-dialog__footer {
+      padding: 18px 32px 28px !important;
+      border-top: 0 !important;
+      background: #ffffff !important;
+    }
+
+    #synciconapp .dialogClass .dialog-footer {
+      display: flex !important;
+      justify-content: flex-end !important;
+      gap: 10px !important;
+    }
+
+    #synciconapp .dialogClass .el-button--primary {
+      min-width: 104px !important;
+      height: 40px !important;
+      padding: 0 22px !important;
+      border: 0 !important;
+      border-radius: 999px !important;
+      background: linear-gradient(135deg, #2563eb, #0ea5e9) !important;
+      box-shadow: 0 10px 20px rgba(37, 99, 235, 0.22) !important;
+      font-size: 14px !important;
+      font-weight: 700 !important;
+    }
+
+    @media (max-width: 640px) {
+      #synciconapp .dialogClass .el-dialog {
+        width: calc(100vw - 24px) !important;
+        margin-top: 4vh !important;
+        border-radius: 18px !important;
+      }
+
+      #synciconapp .dialogClass .el-dialog__header,
+      #synciconapp .dialogClass .el-dialog__body,
+      #synciconapp .dialogClass .el-dialog__footer {
+        padding-left: 20px !important;
+        padding-right: 20px !important;
+      }
+
+      #synciconapp .syncpost-block {
+        grid-template-columns: 72px minmax(0, 1fr) !important;
+      }
+
+      #synciconapp .syncpost-block .el-aside {
+        width: 72px !important;
+        height: 72px !important;
+      }
+
+      #synciconapp .all-pubaccounts {
+        grid-template-columns: 1fr !important;
+      }
+    }
+  `;
+  document.head.appendChild(style);
 }
 
 function loadScriptOnce(src: string) {
@@ -87,9 +338,10 @@ function loadScriptOnce(src: string) {
 
 export async function ensureWechatSyncBridge() {
   if (typeof window === "undefined") return false;
+  loadStyleOnce(articleSyncCssUrl);
+  injectWechatSyncModalTheme();
   if (hasWechatSyncBridge()) return true;
 
-  loadStyleOnce(articleSyncCssUrl);
   await loadScriptOnce(articleSyncJsUrl);
   return hasWechatSyncBridge();
 }
@@ -102,13 +354,15 @@ export function hasWechatSyncBridge() {
 export async function buildWechatSyncArticle(variant: PlatformVariant) {
   let html = marked.parse(variant.bodyMarkdown) as string;
 
+  // 所有平台统一内联飞书图片：同步插件的后台脚本拿不到本站登录态，
+  // 无法下载 /api/feishu-image/<token>，必须在页面内（带登录 cookie）下载后内联为 data URI。
+  html = await inlineFeishuImages(html);
+
   if (variant.platform === "netease") {
-    // 网易号适配器会把 table 转纯文本，同时后台脚本拿不到本站登录态下载飞书图片。
-    // 因此网易专用：图片压缩内联、表格渲染成图片，再交给 Wechatsync 上传到网易素材。
-    html = await inlineFeishuImages(html);
+    // 网易号适配器会把 table 转纯文本，因此网易专用：表格渲染成图片后再上传。
     html = await convertTablesToImages(html);
   } else {
-    // 其他平台保持原生 HTML 表格，只把飞书图片转成绝对 URL 交给适配器上传。
+    // 其他平台保持原生 HTML 表格，图片已内联为 data URI 交给适配器上传。
     html = resolveImageUrls(html);
   }
 
@@ -144,7 +398,7 @@ const MAX_IMAGE_WIDTH = 800;
 /** JPEG 压缩质量 */
 const JPEG_QUALITY = 0.75;
 
-/** 网易专用：下载飞书图片后压缩为 data URI，随后 Wechatsync 会上传为网易图片 URL */
+/** 下载飞书图片后压缩为 data URI，随后由 Wechatsync 上传为目标平台图片 URL */
 async function inlineFeishuImages(html: string): Promise<string> {
   const normalized = html.replace(/feishu-image:\/\/([\w]+)/g, "/api/feishu-image/$1");
   const regex = /src="\/api\/feishu-image\/([^"]+)"/g;

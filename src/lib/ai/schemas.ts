@@ -1,16 +1,5 @@
 import { z } from "zod";
 
-const geoChecklistSchema = z.object({
-  invertedPyramid: z.boolean(),
-  clearHeadingsListsTables: z.boolean(),
-  qaFormatForComplexContent: z.boolean(),
-  entitiesExplained: z.boolean(),
-  dataAndCases: z.boolean(),
-  decisionScenarios: z.boolean(),
-  traceableSources: z.boolean(),
-  problemSolutionValidation: z.boolean(),
-});
-
 export const geoOptimizationOutputSchema = z.object({
   sourceGeoScore: z.number().min(0).max(100),
   geoScore: z.number().min(0).max(100),
@@ -19,12 +8,23 @@ export const geoOptimizationOutputSchema = z.object({
   summary: z.string().min(1),
   coreConclusion: z.string().min(1),
   bodyMarkdown: z.string().min(1),
-  checklist: geoChecklistSchema,
-  checklistItems: z.array(z.object({
+  dimensionScores: z.array(z.object({
     key: z.string(),
     label: z.string(),
-    passed: z.boolean(),
-    reason: z.string(),
+    layer: z.string(),
+    weight: z.number().min(0).max(100),
+    beforeScore: z.number().min(0).max(100),
+    afterScore: z.number().min(0).max(100),
+    note: z.string(),
+  })).min(1),
+  riskCheck: z.object({
+    keywordStuffing: z.boolean(),
+    overOptimization: z.boolean(),
+    fabrication: z.boolean(),
+    note: z.string(),
+  }),
+  supplementSuggestions: z.array(z.object({
+    location: z.string(),
     suggestion: z.string(),
   })),
   changePreview: z.array(z.object({
@@ -61,6 +61,19 @@ export const platformVariantOutputSchema = z.object({
   riskNotes: z.array(z.string()),
 });
 
+export const humanizeOutputSchema = z.object({
+  title: z.string().min(1),
+  summary: z.string().min(1),
+  bodyMarkdown: z.string().min(1),
+  tags: z.array(z.string()),
+  humanToneScore: z.number().min(0).max(100),
+  geoFidelityScore: z.number().min(0).max(100),
+  platformToneScore: z.number().min(0).max(100),
+  factualConsistencyScore: z.number().min(0).max(100),
+  changeSummary: z.array(z.string()),
+  riskNotes: z.array(z.string()),
+});
+
 export const citationValidationOutputSchema = z.object({
   citationScore: z.number().min(1).max(10),
   citationProbabilityReason: z.string(),
@@ -82,4 +95,5 @@ export const citationValidationOutputSchema = z.object({
 
 export type GeoOptimizationOutput = z.infer<typeof geoOptimizationOutputSchema>;
 export type PlatformVariantOutput = z.infer<typeof platformVariantOutputSchema>;
+export type HumanizeOutput = z.infer<typeof humanizeOutputSchema>;
 export type CitationValidationOutput = z.infer<typeof citationValidationOutputSchema>;

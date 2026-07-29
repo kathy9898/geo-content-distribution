@@ -1,6 +1,41 @@
-export type Platform = "zhihu" | "toutiao" | "baijiahao" | "csdn" | "cnblogs" | "juejin" | "sohu" | "netease" | "wechat" | "cto51";
+export type Platform = "zhihu" | "toutiao" | "baijiahao" | "csdn" | "cnblogs" | "juejin" | "sohu" | "netease" | "wechat" | "cto51" | "segmentfault";
 export type ContentStatus = "draft" | "geo_optimized" | "variant_generated" | "published";
 export type ReviewStatus = "draft" | "reviewing" | "approved" | "scheduled" | "published" | "failed";
+export type HumanizeIntensity = "light" | "medium" | "strong";
+
+export interface VariantTextSnapshot {
+  title: string;
+  summary: string;
+  bodyMarkdown: string;
+  tags: string[];
+}
+
+export interface HumanizeCheck {
+  key: string;
+  label: string;
+  passed: boolean;
+  severity: "info" | "warning" | "error";
+  detail: string;
+}
+
+export interface VariantHumanizeResult {
+  status: "generated" | "applied";
+  profile: "khazix-lite";
+  intensity: HumanizeIntensity;
+  source: VariantTextSnapshot;
+  polished: VariantTextSnapshot;
+  humanToneScore: number;
+  geoFidelityScore: number;
+  platformToneScore: number;
+  factualConsistencyScore: number;
+  changeSummary: string[];
+  riskNotes: string[];
+  checks: HumanizeCheck[];
+  model: string;
+  promptVersion: string;
+  generatedAt: string;
+  appliedAt?: string;
+}
 
 export interface ContentInput {
   title: string;
@@ -45,6 +80,23 @@ export interface GeoChangePreview {
   reason: string;
 }
 
+export interface GeoDimensionScore {
+  key: string;
+  label: string;
+  layer: string;
+  weight: number;
+  beforeScore: number;
+  afterScore: number;
+  note: string;
+}
+
+export interface GeoRiskCheck {
+  keywordStuffing: boolean;
+  overOptimization: boolean;
+  fabrication: boolean;
+  note: string;
+}
+
 export interface GeoOptimization {
   id: string;
   contentId: string;
@@ -55,8 +107,14 @@ export interface GeoOptimization {
   summary: string;
   coreConclusion: string;
   bodyMarkdown: string;
-  checklist: GeoChecklist;
+  checklist?: GeoChecklist;
   checklistItems?: GeoChecklistItem[];
+  dimensionScores?: GeoDimensionScore[];
+  riskCheck?: GeoRiskCheck;
+  supplementSuggestions?: Array<{
+    location: string;
+    suggestion: string;
+  }>;
   changePreview?: GeoChangePreview[];
   entities: {
     brandNames: string[];
@@ -96,6 +154,7 @@ export interface PlatformVariant {
   marketingRiskScore: number;
   riskNotes: string[];
   reviewStatus: ReviewStatus;
+  humanize?: VariantHumanizeResult;
   createdAt: string;
   updatedAt: string;
 }
@@ -175,6 +234,7 @@ export interface ContentDetail {
 
 export const platformLabels: Record<Platform, string> = {
   zhihu: "知乎",
+  segmentfault: "思否",
   toutiao: "头条",
   baijiahao: "百家号",
   csdn: "CSDN",
@@ -191,6 +251,7 @@ export function detectPlatformFromUrl(url: string): Platform | null {
   try {
     const host = new URL(url).hostname.toLowerCase();
     if (host.includes("zhihu.com")) return "zhihu";
+    if (host.includes("segmentfault.com")) return "segmentfault";
     if (host.includes("toutiao.com")) return "toutiao";
     if (host.includes("baijiahao.baidu.com")) return "baijiahao";
     if (host.includes("csdn.net")) return "csdn";
