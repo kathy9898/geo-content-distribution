@@ -20,7 +20,7 @@ export interface HumanizeCheck {
 
 export interface VariantHumanizeResult {
   status: "generated" | "applied";
-  profile: "khazix-lite";
+  profile: "khazix-lite" | "human-writing-v1";
   intensity: HumanizeIntensity;
   source: VariantTextSnapshot;
   polished: VariantTextSnapshot;

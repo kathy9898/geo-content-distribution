@@ -109,8 +109,8 @@ export default function HumanizePanel({ detail, reload }: { detail: ContentDetai
       <Alert
         type="info"
         showIcon
-        message="强化开头、结尾和意象表达，不改 GEO 结构和平台调性"
-        description="卡兹克 Lite 会重点重写开头与结尾，并克制地穿插贴合主题的比喻、回环和短句。平台原版始终保留；图片、链接、数字、代码块或品牌词缺失时禁止应用。想要更明显的风格，请选“较强”。"
+        message="按活人感写作要求润色，不改 GEO 结构和平台调性"
+        description="从文章已有材料出发重写开头、写完即收，清除冒号、破折号、翻案句和 AI 黑话，不编造经历和细节。平台原版始终保留；图片、链接、数字、代码块或品牌词缺失时禁止应用。想要更明显的风格，请选“较强”。"
       />
       <Card title="生成真人感润色稿">
         <Space wrap size="middle">

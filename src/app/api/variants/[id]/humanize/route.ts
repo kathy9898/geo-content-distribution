@@ -73,11 +73,11 @@ export async function POST(request: Request, { params }: { params: { id: string 
     const checks = validateHumanizedVariant(source, polished, terms);
     const remainingStyleIssues = humanizeStyleIssues(source, polished, intensity);
     checks.push({
-      key: "khazix-style",
-      label: "卡兹克风格强度",
+      key: "human-writing-style",
+      label: "活人感风格",
       passed: remainingStyleIssues.length === 0,
       severity: remainingStyleIssues.length ? "warning" : "info",
-      detail: remainingStyleIssues.length ? remainingStyleIssues.join("；") : "开头、结尾与意象表达达到当前强度要求",
+      detail: remainingStyleIssues.length ? remainingStyleIssues.join("；") : "开头结尾已重写，违禁表达清零",
     });
     const now = new Date().toISOString();
 
@@ -86,7 +86,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
       ...source,
       humanize: {
         status: "generated",
-        profile: "khazix-lite",
+        profile: "human-writing-v1",
         intensity,
         source,
         polished,
