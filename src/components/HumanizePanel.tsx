@@ -24,6 +24,7 @@ const defaultIntensities: Record<Platform, HumanizeIntensity> = {
   wechat: "strong",
   cto51: "medium",
   segmentfault: "medium",
+  twitter: "medium",
 };
 
 function renderMarkdown(markdown: string) {
