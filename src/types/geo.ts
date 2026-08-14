@@ -171,6 +171,8 @@ export interface PublishRecord {
   syncStatus?: "draft_synced" | "failed" | "manual" | "published";
   syncTaskId?: string;
   syncedAt?: string;
+  baiduIndexed?: boolean;
+  baiduCheckedAt?: string;
   createdAt: string;
 }
 
