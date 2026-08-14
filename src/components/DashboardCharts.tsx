@@ -93,7 +93,9 @@ export function ContentTrendChart({ contents }: { contents: ContentItem[] }) {
   if (!weeks.length) return <Empty description="暂无内容数据" style={{ padding: "40px 0" }} />;
   const firstWeek = weeks[0];
   const lastWeek = weeks[weeks.length - 1];
-  const allWeeks = listWeeks(firstWeek, lastWeek);
+  const todayWeek = getWeekStart(toDay(new Date().toISOString()) || "");
+  const endWeek = todayWeek > lastWeek ? todayWeek : lastWeek;
+  const allWeeks = listWeeks(firstWeek, endWeek);
   let total = 0;
   const data = allWeeks.map((weekStart) => {
     total += weekCounts.get(weekStart) || 0;
