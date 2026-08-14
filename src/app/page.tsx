@@ -61,9 +61,10 @@ export default function HomePage() {
       />
 
       <Row gutter={16} style={{ marginBottom: 24 }}>
-        <Col span={8}><Card className="stat-card animate-in"><Statistic title="主文数量" value={contents.length} /></Card></Col>
-        <Col span={8}><Card className="stat-card animate-in animate-in-delay-1"><Statistic title="已 GEO 调优" value={contents.filter((item) => item.status !== "draft").length} /></Card></Col>
-        <Col span={8}><Card className="stat-card animate-in animate-in-delay-2"><Statistic title="已发布数" value={records.length} /></Card></Col>
+        <Col span={6}><Card className="stat-card animate-in"><Statistic title="主文数量" value={contents.length} /></Card></Col>
+        <Col span={6}><Card className="stat-card animate-in animate-in-delay-1"><Statistic title="已 GEO 调优" value={contents.filter((item) => item.status !== "draft").length} /></Card></Col>
+        <Col span={6}><Card className="stat-card animate-in animate-in-delay-2"><Statistic title="已发布数" value={records.length} /></Card></Col>
+        <Col span={6}><Card className="stat-card animate-in animate-in-delay-3"><Statistic title="百度已收录" value={records.filter((record) => record.baiduIndexed === true).length} /></Card></Col>
       </Row>
 
       <Row gutter={16} style={{ marginBottom: 24 }}>
