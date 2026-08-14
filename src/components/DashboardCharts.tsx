@@ -25,6 +25,25 @@ function toDay(iso: string) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+/** 返回某天所在周的周一日期（YYYY-MM-DD） */
+function getWeekStart(day: string): string {
+  const d = new Date(day);
+  const dayOfWeek = d.getDay() || 7; // 0=Sunday → 7
+  d.setDate(d.getDate() - dayOfWeek + 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/** 列出两个周一之间的所有完整周 */
+function listWeeks(firstWeek: string, lastWeek: string): string[] {
+  const weeks: string[] = [];
+  const cursor = new Date(firstWeek);
+  while (cursor <= new Date(lastWeek)) {
+    weeks.push(`${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}-${String(cursor.getDate()).padStart(2, "0")}`);
+    cursor.setDate(cursor.getDate() + 7);
+  }
+  return weeks;
+}
+
 export function PlatformPieChart({ records }: { records: PublishRecord[] }) {
   const counts = new Map<string, number>();
   for (const r of records) {
@@ -63,20 +82,23 @@ export function PlatformPieChart({ records }: { records: PublishRecord[] }) {
 }
 
 export function ContentTrendChart({ contents }: { contents: ContentItem[] }) {
-  const dailyCounts = new Map<string, number>();
+  const weekCounts = new Map<string, number>();
   for (const c of contents) {
     const day = toDay(c.createdAt);
     if (!day) continue;
-    dailyCounts.set(day, (dailyCounts.get(day) || 0) + 1);
+    const weekStart = getWeekStart(day);
+    weekCounts.set(weekStart, (weekCounts.get(weekStart) || 0) + 1);
   }
-  const days = Array.from(dailyCounts.keys()).sort();
+  const weeks = Array.from(weekCounts.keys()).sort();
+  if (!weeks.length) return <Empty description="暂无内容数据" style={{ padding: "40px 0" }} />;
+  const firstWeek = weeks[0];
+  const lastWeek = weeks[weeks.length - 1];
+  const allWeeks = listWeeks(firstWeek, lastWeek);
   let total = 0;
-  const data = days.map((day) => {
-    total += dailyCounts.get(day) || 0;
-    return { day: day.slice(5), total, added: dailyCounts.get(day) };
+  const data = allWeeks.map((weekStart) => {
+    total += weekCounts.get(weekStart) || 0;
+    return { week: weekStart.slice(5), total, added: weekCounts.get(weekStart) || 0 };
   });
-
-  if (!data.length) return <Empty description="暂无内容数据" style={{ padding: "40px 0" }} />;
 
   return (
     <ResponsiveContainer width="100%" height={280}>
@@ -88,9 +110,9 @@ export function ContentTrendChart({ contents }: { contents: ContentItem[] }) {
           </linearGradient>
         </defs>
         <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-        <XAxis dataKey="day" tick={{ fontSize: 12, fill: "#64748b" }} tickLine={false} axisLine={{ stroke: "#e2e8f0" }} />
+        <XAxis dataKey="week" tick={{ fontSize: 12, fill: "#64748b" }} tickLine={false} axisLine={{ stroke: "#e2e8f0" }} />
         <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: "#64748b" }} tickLine={false} axisLine={false} />
-        <Tooltip formatter={(value, name) => (name === "total" ? [`${value} 篇`, "内容总数"] : [`+${value} 篇`, "当日新增"])} />
+        <Tooltip formatter={(value, name) => (name === "total" ? [`${value} 篇`, "累计总数"] : [`${value} 篇`, "本周新增"])} />
         <Area type="monotone" dataKey="total" stroke="#2563eb" strokeWidth={2.5} fill="url(#contentTotalFill)" />
       </AreaChart>
     </ResponsiveContainer>
