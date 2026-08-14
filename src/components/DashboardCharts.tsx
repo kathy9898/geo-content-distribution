@@ -15,7 +15,7 @@ import {
   YAxis,
 } from "recharts";
 import { platformLabels } from "@/types/geo";
-import type { ContentItem, Platform, PublishRecord } from "@/types/geo";
+import type { Platform, PublishRecord } from "@/types/geo";
 
 const PIE_COLORS = ["#2563eb", "#0ea5e9", "#22c55e", "#f59e0b", "#8b5cf6", "#ec4899", "#14b8a6", "#f97316", "#64748b", "#ef4444", "#84cc16", "#06b6d4"];
 
@@ -73,10 +73,10 @@ export function PlatformPieChart({ records }: { records: PublishRecord[] }) {
   );
 }
 
-export function ContentTrendChart({ contents }: { contents: ContentItem[] }) {
+export function ContentTrendChart({ records }: { records: PublishRecord[] }) {
   const dailyCounts = new Map<string, number>();
-  for (const c of contents) {
-    const day = toDay(c.createdAt);
+  for (const record of records) {
+    const day = toDay(record.publishedAt);
     if (!day) continue;
     dailyCounts.set(day, (dailyCounts.get(day) || 0) + 1);
   }

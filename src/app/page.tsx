@@ -73,8 +73,8 @@ export default function HomePage() {
           </Card>
         </Col>
         <Col xs={24} lg={14}>
-          <Card className="animate-in animate-in-delay-3" title="内容总数趋势" loading={loading}>
-            <ContentTrendChart contents={contents} />
+          <Card className="animate-in animate-in-delay-3" title="已发布累计趋势" loading={loading}>
+            <ContentTrendChart records={records} />
           </Card>
         </Col>
       </Row>
