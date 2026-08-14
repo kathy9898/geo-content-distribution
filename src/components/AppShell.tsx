@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button, Layout, Menu, Typography, message } from "antd";
-import { FileAddOutlined, HomeOutlined, SettingOutlined, CheckSquareOutlined, SendOutlined, LogoutOutlined, FormatPainterOutlined } from "@ant-design/icons";
+import { FileAddOutlined, HomeOutlined, SettingOutlined, SendOutlined, LogoutOutlined, FormatPainterOutlined } from "@ant-design/icons";
 
 const { Header, Content } = Layout;
 
@@ -32,7 +32,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             { key: "home", icon: <HomeOutlined />, label: <Link href="/">工作台</Link> },
             { key: "new", icon: <FileAddOutlined />, label: <Link href="/contents/new">新建主文</Link> },
             { key: "gzh-format", icon: <FormatPainterOutlined />, label: <Link href="/gzh-format">公众号排版</Link> },
-            { key: "review", icon: <CheckSquareOutlined />, label: <Link href="/review">审核中心</Link> },
             { key: "publish-records", icon: <SendOutlined />, label: <Link href="/publish-records">自动发布记录</Link> },
             { key: "prompts", icon: <SettingOutlined />, label: <Link href="/settings/prompts">Prompt 模板</Link> },
           ]}
