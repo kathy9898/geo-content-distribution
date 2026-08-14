@@ -4,14 +4,15 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Button, Card, Col, Empty, message, Modal, Row, Space, Statistic, Table, Tag, Typography } from "antd";
 import AppShell, { PageTitle } from "@/components/AppShell";
-import type { ContentItem } from "@/types/geo";
+import { ContentTrendChart, PlatformPieChart } from "@/components/DashboardCharts";
+import type { ContentItem, PublishRecord } from "@/types/geo";
 
 type ContentWithVariantCount = ContentItem & { variantCount: number };
 
 export default function HomePage() {
   const [contents, setContents] = useState<ContentWithVariantCount[]>([]);
+  const [records, setRecords] = useState<PublishRecord[]>([]);
   const [loading, setLoading] = useState(true);
-  const [publishedCount, setPublishedCount] = useState(0);
 
   useEffect(() => {
     Promise.all([
@@ -20,7 +21,7 @@ export default function HomePage() {
     ])
       .then(([data, records]) => {
         setContents(Array.isArray(data) ? data : []);
-        setPublishedCount(Array.isArray(records) ? records.length : 0);
+        setRecords(Array.isArray(records) ? records : []);
       })
       .finally(() => setLoading(false));
   }, []);
@@ -62,7 +63,20 @@ export default function HomePage() {
       <Row gutter={16} style={{ marginBottom: 24 }}>
         <Col span={8}><Card className="stat-card animate-in"><Statistic title="主文数量" value={contents.length} /></Card></Col>
         <Col span={8}><Card className="stat-card animate-in animate-in-delay-1"><Statistic title="已 GEO 调优" value={contents.filter((item) => item.status !== "draft").length} /></Card></Col>
-        <Col span={8}><Card className="stat-card animate-in animate-in-delay-2"><Statistic title="已发布数" value={publishedCount} /></Card></Col>
+        <Col span={8}><Card className="stat-card animate-in animate-in-delay-2"><Statistic title="已发布数" value={records.length} /></Card></Col>
+      </Row>
+
+      <Row gutter={16} style={{ marginBottom: 24 }}>
+        <Col xs={24} lg={10}>
+          <Card className="animate-in animate-in-delay-2" title="各渠道发文分布" loading={loading}>
+            <PlatformPieChart records={records} />
+          </Card>
+        </Col>
+        <Col xs={24} lg={14}>
+          <Card className="animate-in animate-in-delay-3" title="内容总数趋势" loading={loading}>
+            <ContentTrendChart contents={contents} />
+          </Card>
+        </Col>
       </Row>
 
       <Card
