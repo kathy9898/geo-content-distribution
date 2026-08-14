@@ -62,8 +62,20 @@ export default function HomePage() {
 
       <Row gutter={16} style={{ marginBottom: 24 }}>
         <Col xs={24} md={8}><Card className="stat-card animate-in"><Statistic title="主文数量" value={contents.length} /></Card></Col>
-        <Col xs={24} md={8}><Card className="stat-card animate-in animate-in-delay-1"><Statistic title="已发布数" value={records.length} /></Card></Col>
-        <Col xs={24} md={8}><Card className="stat-card animate-in animate-in-delay-2"><Statistic title="百度收录数" value={records.filter((record) => record.baiduIndexed === true).length} /></Card></Col>
+        <Col xs={24} md={8}>
+          <Link href="/publish-records">
+            <Card className="stat-card animate-in animate-in-delay-1" style={{ cursor: "pointer" }}>
+              <Statistic title="已发布数" value={records.length} />
+            </Card>
+          </Link>
+        </Col>
+        <Col xs={24} md={8}>
+          <Link href="/publish-records">
+            <Card className="stat-card animate-in animate-in-delay-2" style={{ cursor: "pointer" }}>
+              <Statistic title="百度收录数" value={records.filter((record) => record.baiduIndexed === true).length} />
+            </Card>
+          </Link>
+        </Col>
       </Row>
 
       <Row gutter={16} style={{ marginBottom: 24 }}>
