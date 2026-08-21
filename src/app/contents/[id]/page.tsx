@@ -17,6 +17,7 @@ function highlightSupplementMarkers(html: string): string {
 
 import { Alert, Button, Card, Checkbox, Col, Descriptions, Divider, Form, Input, InputNumber, List, message, Modal, Popconfirm, Progress, Row, Select, Space, Spin, Switch, Table, Tabs, Tag, Typography } from "antd";
 import { CloseOutlined, CopyOutlined, ExportOutlined, FileTextOutlined } from "@ant-design/icons";
+import { SendOutlined } from "@ant-design/icons";
 import AppShell, { PageTitle } from "@/components/AppShell";
 import HumanizePanel from "@/components/HumanizePanel";
 import type { ContentDetail, ContentItem, CitationModelKey, CitationModelResult, CitationValidationRun, GeoChangePreview, GeoChecklist, GeoChecklistItem, GeoDimensionScore, GeoOptimization, Platform, PlatformVariant } from "@/types/geo";
@@ -329,6 +330,46 @@ export default function ContentDetailPage() {
       const errorMessage = error instanceof Error ? error.message : "同步草稿失败";
       message.error(errorMessage);
       setActionLoading(undefined);
+   }
+ };
+
+  // 一键转发原文到各平台草稿箱（通过 Wechatsync 插件桥接）
+  const forwardSource = async () => {
+    if (!detail) return;
+    setActionLoading("forward-source");
+    try {
+      const ready = await ensureWechatSyncBridge();
+      if (!ready) {
+        message.warning("未检测到同步插件，请先安装 Wechatsync 浏览器插件");
+        setActionLoading(undefined);
+        return;
+      }
+      const content = detail.content;
+      const pseudoVariant: PlatformVariant = {
+        id: "source-forward",
+        contentId: content.id,
+        platform: "zhihu",
+        title: content.title,
+        summary: content.title,
+        bodyMarkdown: content.body,
+        tags: content.keywords,
+        geoFidelityScore: 0,
+        platformToneScore: 0,
+        factualConsistencyScore: 0,
+        marketingRiskScore: 0,
+        riskNotes: [],
+        reviewStatus: "draft",
+        createdAt: content.createdAt,
+        updatedAt: content.updatedAt,
+      };
+      const article = await buildWechatSyncArticle(pseudoVariant);
+      await (window as any).syncPost(article);
+      message.info("已打开同步窗口，请选择要分发的平台账号");
+      setActionLoading(undefined);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "一键转发失败";
+      message.error(errorMessage);
+      setActionLoading(undefined);
     }
   };
 
@@ -419,6 +460,16 @@ export default function ContentDetailPage() {
                   <Button size="small" type="primary" onClick={() => openSourceEditor(detail.content)}>编辑</Button>
                 </Space>
                 <div className="markdown-preview raw" style={{ maxHeight: 400, overflowY: "auto", paddingRight: 8 }}>{detail.content.body}</div>
+                <Divider />
+                <Space>
+                  <Button
+                    type="primary"
+                    icon={<SendOutlined />}
+                    loading={actionLoading === "forward-source"}
+                    onClick={forwardSource}
+                  >一键转发到各平台</Button>
+                  <Typography.Text type="secondary">将原文同时分发到知乎、头条、百家号等各平台草稿箱</Typography.Text>
+                </Space>
               </Card>
             ),
           },
