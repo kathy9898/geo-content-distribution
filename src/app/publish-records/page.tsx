@@ -17,6 +17,8 @@ export default function PublishRecordsPage() {
   const [importOpen, setImportOpen] = useState(false);
   const [importText, setImportText] = useState("");
   const [importing, setImporting] = useState(false);
+  const [pageSize, setPageSize] = useState(10);
+  const [currentPage, setCurrentPage] = useState(1);
 
   const loadRecords = () => {
     setLoading(true);
@@ -159,7 +161,20 @@ export default function PublishRecordsPage() {
           loading={loading}
           dataSource={records}
           rowSelection={{ selectedRowKeys, onChange: (keys) => setSelectedRowKeys(keys) }}
-          pagination={{ pageSize: 10, showSizeChanger: true }}
+          pagination={{
+            current: currentPage,
+            pageSize,
+            showSizeChanger: true,
+            pageSizeOptions: ["10", "20", "50", "100"],
+            onChange: (page, size) => {
+              setCurrentPage(page);
+              setPageSize(size);
+            },
+            onShowSizeChange: (page, size) => {
+              setCurrentPage(1);
+              setPageSize(size);
+            },
+          }}
           columns={[
             {
               title: "文章标题",
