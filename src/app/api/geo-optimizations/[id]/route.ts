@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { readCollection, storeFiles, writeCollection } from "@/lib/storage/jsonStore";
+import { getContentDetail, updateContent } from "@/lib/storage/contentRepository";
 import type { GeoChangePreview, GeoChecklistItem, GeoOptimization } from "@/types/geo";
+import type { PlatformVariant } from "@/types/geo";
 
 export const runtime = "nodejs";
 
@@ -39,4 +41,35 @@ export async function PATCH(request: Request, { params }: { params: { id: string
 
   await writeCollection(storeFiles.geoOptimizations, items);
   return NextResponse.json(items[index]);
+}
+
+export async function DELETE(_request: Request, { params }: { params: { id: string } }) {
+  try {
+    const geos = await readCollection<GeoOptimization>(storeFiles.geoOptimizations);
+    const target = geos.find((item) => item.id === params.id);
+
+    if (!target) {
+      return NextResponse.json({ message: "GEO 调优结果不存在" }, { status: 404 });
+    }
+
+    // 删除 GEO 调优结果
+    await writeCollection(storeFiles.geoOptimizations, geos.filter((item) => item.id !== params.id));
+
+    // 级联删除基于该 GEO 优化的平台版本
+    const variants = await readCollection<PlatformVariant>(storeFiles.platformVariants);
+    await writeCollection(storeFiles.platformVariants, variants.filter((v) => v.geoOptimizationId !== params.id));
+
+    // 重置内容状态为草稿
+    const detail = await getContentDetail(target.contentId);
+    if (detail) {
+      await updateContent({ ...detail.content, status: "draft", updatedAt: new Date().toISOString() });
+    }
+
+    return NextResponse.json({ message: "已删除 GEO 调优结果及关联的平台版本" });
+  } catch (error) {
+    return NextResponse.json(
+      { message: error instanceof Error ? error.message : "删除失败" },
+      { status: 500 },
+    );
+  }
 }

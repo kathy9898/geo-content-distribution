@@ -216,6 +216,24 @@ export default function ContentDetailPage() {
     }
   };
 
+  const deleteGeo = async () => {
+    if (!geo) return;
+    setActionLoading("del-geo");
+    try {
+      const res = await fetch(`/api/geo-optimizations/${geo.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.message || "删除失败");
+      }
+      message.success("已删除 GEO 调优结果及关联的平台版本");
+      await loadDetail();
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : "删除失败");
+    } finally {
+      setActionLoading(undefined);
+    }
+  };
+
   const fallbackCopy = (text: string): boolean => {
     const textarea = document.createElement("textarea");
     textarea.value = text;
@@ -487,6 +505,16 @@ export default function ContentDetailPage() {
                 {geo ? (
                   <Space direction="vertical" size="large" style={{ width: "100%" }}>
                     <Card title="GEO 分数对比">
+                      <Popconfirm
+                        title="确定删除 GEO 调优结果？"
+                        description="将同时删除基于该优化的所有平台版本，内容状态恢复为草稿。"
+                        onConfirm={deleteGeo}
+                        okText="删除"
+                        cancelText="取消"
+                        okButtonProps={{ danger: true }}
+                      >
+                        <Button danger loading={actionLoading === "del-geo"} style={{ float: "right" }}>删除 GEO 调优</Button>
+                      </Popconfirm>
                       <Row gutter={24} align="middle">
                         <Col span={7}>
                           {geo.sourceGeoScore === undefined ? (
