@@ -31,15 +31,17 @@ export default function PublishRecordsPage() {
   useEffect(() => { loadRecords(); }, []);
 
   const downloadUrls = () => {
-    const targets = selectedRowKeys.length
-      ? records.filter((r) => selectedRowKeys.includes(r.id))
-      : records;
+    if (!selectedRowKeys.length) {
+      message.warning("请先勾选要下载的发布记录");
+      return;
+    }
+    const targets = records.filter((r) => selectedRowKeys.includes(r.id));
     const urls = targets
       .map((r) => (r.publishUrl || "").trim())
       .filter((u) => /^https?:\/\//i.test(u));
     const unique = Array.from(new Set(urls));
     if (!unique.length) {
-      message.warning("所选记录中没有可导出的 http 链接");
+      message.warning("所选记录中没有可导出的链接");
       return;
     }
     const blob = new Blob([unique.join("\n") + "\n"], { type: "text/plain;charset=utf-8" });
@@ -147,8 +149,8 @@ export default function PublishRecordsPage() {
       <Card
         extra={
           <Space>
-            <Button icon={<DownloadOutlined />} onClick={downloadUrls}>
-              下载发布链接{selectedRowKeys.length ? `（已选 ${selectedRowKeys.length}）` : "（全部）"}
+            <Button icon={<DownloadOutlined />} onClick={downloadUrls} disabled={!selectedRowKeys.length}>
+              下载选中发布链接{selectedRowKeys.length ? `（已选 ${selectedRowKeys.length}）` : ""}
             </Button>
             <Button type="primary" icon={<ImportOutlined />} onClick={() => setImportOpen(true)}>
               导入收录结果
