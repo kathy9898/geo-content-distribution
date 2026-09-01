@@ -444,7 +444,11 @@ async function inlineAllImages(html: string): Promise<string> {
       if (seen.has(url)) return { original: match[0], replacement: match[0] };
       seen.add(url);
       try {
-        const res = await fetch(url, { credentials: "include" });
+        // 飞书图片用专用接口；外部图片用代理接口绕过 CORS
+        const fetchUrl = url.startsWith("/api/feishu-image/")
+          ? url
+          : `/api/image-proxy?url=${encodeURIComponent(url)}`;
+        const res = await fetch(fetchUrl);
         if (!res.ok) return { original: match[0], replacement: match[0] };
         const blob = await res.blob();
         if (!blob.type.startsWith("image/")) return { original: match[0], replacement: match[0] };
