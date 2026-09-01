@@ -356,16 +356,15 @@ export function hasWechatSyncBridge() {
 export async function buildWechatSyncArticle(variant: PlatformVariant) {
   let html = marked.parse(variant.bodyMarkdown) as string;
 
-  // 所有平台统一内联全部图片（含飞书图片和外部 URL）为 data URI：
-  // 同步插件的后台脚本拿不到本站登录态，也无法可靠下载外部图片 URL，
-  // 必须在页面内（带登录 cookie）下载后内联为 data URI 交给适配器上传。
-  html = await inlineAllImages(html);
-
   if (variant.platform === "netease") {
     // 网易号适配器会把 table 转纯文本，因此网易专用：表格渲染成图片后再上传。
     html = await convertTablesToImages(html);
+  } else if (variant.platform === "baijiahao") {
+    // 百家号对 data URI 兼容性很差，保留为可公开访问的代理 URL。
+    html = await rewriteAllImagesToProxyUrls(html);
   } else {
-    // 其他平台保持原生 HTML 表格，图片已全部内联为 data URI 交给适配器上传。
+    // 其他平台保留原生 HTML 表格，图片则统一内联为 data URI 交给适配器上传。
+    html = await inlineAllImages(html);
   }
 
   return {
@@ -467,6 +466,19 @@ async function inlineAllImages(html: string): Promise<string> {
     }
   }
   return result;
+}
+
+/** 百家号专用：把所有图片改写成公开可访问的站内代理 URL，避免 data URI 被判异常 */
+async function rewriteAllImagesToProxyUrls(html: string): Promise<string> {
+  const normalized = html.replace(/feishu-image:\/\/([\w]+)/g, "/api/feishu-image/$1");
+  return normalized.replace(/src="(?!data:)([^"]+)"/g, (_match, url: string) => {
+    const absoluteUrl = url.startsWith("http://") || url.startsWith("https://")
+      ? url
+      : url.startsWith("/")
+        ? `${typeof window !== "undefined" ? window.location.origin : ""}${url}`
+        : url;
+    return `src="/api/image-proxy?url=${encodeURIComponent(absoluteUrl)}"`;
+  });
 }
 
 /** 用 Canvas 压缩图片：超过 maxWidth 等比缩放，输出 JPEG data URI */
