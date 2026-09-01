@@ -356,16 +356,16 @@ export function hasWechatSyncBridge() {
 export async function buildWechatSyncArticle(variant: PlatformVariant) {
   let html = marked.parse(variant.bodyMarkdown) as string;
 
-  // 所有平台统一内联飞书图片：同步插件的后台脚本拿不到本站登录态，
-  // 无法下载 /api/feishu-image/<token>，必须在页面内（带登录 cookie）下载后内联为 data URI。
-  html = await inlineFeishuImages(html);
+  // 所有平台统一内联全部图片（含飞书图片和外部 URL）为 data URI：
+  // 同步插件的后台脚本拿不到本站登录态，也无法可靠下载外部图片 URL，
+  // 必须在页面内（带登录 cookie）下载后内联为 data URI 交给适配器上传。
+  html = await inlineAllImages(html);
 
   if (variant.platform === "netease") {
     // 网易号适配器会把 table 转纯文本，因此网易专用：表格渲染成图片后再上传。
     html = await convertTablesToImages(html);
   } else {
-    // 其他平台保持原生 HTML 表格，图片已内联为 data URI 交给适配器上传。
-    html = resolveImageUrls(html);
+    // 其他平台保持原生 HTML 表格，图片已全部内联为 data URI 交给适配器上传。
   }
 
   return {
@@ -425,6 +425,42 @@ async function inlineFeishuImages(html: string): Promise<string> {
   let result = normalized;
   for (const { original, replacement } of replacements) {
     result = result.replace(original, replacement);
+  }
+  return result;
+}
+
+/** 下载所有图片（含飞书图片和外部 URL）并压缩为 data URI，避免适配器在后台下载外部图片失败 */
+async function inlineAllImages(html: string): Promise<string> {
+  const normalized = html.replace(/feishu-image:\/\/([\w]+)/g, "/api/feishu-image/$1");
+  // 匹配所有 img 标签的 src（跳过已经是 data: 的）
+  const regex = /src="(?!data:)([^"]+)"/g;
+  const matches = Array.from(normalized.matchAll(regex));
+  if (!matches.length) return normalized;
+
+  const seen = new Set<string>();
+  const replacements = await Promise.all(
+    matches.map(async (match) => {
+      const url = match[1];
+      if (seen.has(url)) return { original: match[0], replacement: match[0] };
+      seen.add(url);
+      try {
+        const res = await fetch(url, { credentials: "include" });
+        if (!res.ok) return { original: match[0], replacement: match[0] };
+        const blob = await res.blob();
+        if (!blob.type.startsWith("image/")) return { original: match[0], replacement: match[0] };
+        const compressed = await compressImage(blob, MAX_IMAGE_WIDTH, JPEG_QUALITY);
+        return { original: match[0], replacement: `src="${compressed}"` };
+      } catch {
+        return { original: match[0], replacement: match[0] };
+      }
+    }),
+  );
+
+  let result = normalized;
+  for (const { original, replacement } of replacements) {
+    if (original !== replacement) {
+      result = result.split(original).join(replacement);
+    }
   }
   return result;
 }
