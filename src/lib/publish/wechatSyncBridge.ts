@@ -470,14 +470,15 @@ async function inlineAllImages(html: string): Promise<string> {
 
 /** 百家号专用：把所有图片改写成公开可访问的站内代理 URL，避免 data URI 被判异常 */
 async function rewriteAllImagesToProxyUrls(html: string): Promise<string> {
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
   const normalized = html.replace(/feishu-image:\/\/([\w]+)/g, "/api/feishu-image/$1");
   return normalized.replace(/src="(?!data:)([^"]+)"/g, (_match, url: string) => {
     const absoluteUrl = url.startsWith("http://") || url.startsWith("https://")
       ? url
       : url.startsWith("/")
-        ? `${typeof window !== "undefined" ? window.location.origin : ""}${url}`
-        : url;
-    return `src="/api/image-proxy?url=${encodeURIComponent(absoluteUrl)}"`;
+        ? `${origin}${url}`
+        : `${origin}/${url}`;
+    return `src="${origin}/api/image-proxy?url=${encodeURIComponent(absoluteUrl)}"`;
   });
 }
 

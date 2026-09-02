@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { SESSION_COOKIE, isAuthEnabled, verifySessionValue } from "@/lib/auth/session";
 
-const PUBLIC_PATHS = ["/login", "/api/auth/login", "/api/feishu-image"];
+const PUBLIC_PATHS = ["/login", "/api/auth/login", "/api/feishu-image", "/api/image-proxy"];
 
 function isPublicPath(pathname: string) {
   return (
