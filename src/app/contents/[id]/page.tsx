@@ -624,6 +624,16 @@ export default function ContentDetailPage() {
 
                     <Card title="优化正文" extra={<Button onClick={() => openGeoEditor(geo)}>编辑</Button>}>
                       <div className="markdown-preview" style={{ maxHeight: 400, overflowY: "auto", paddingRight: 8 }} dangerouslySetInnerHTML={{ __html: highlightSupplementMarkers(renderMarkdown(geo.bodyMarkdown) as string) }} />
+                      <Divider />
+                      <Space>
+                        <Button
+                          type="primary"
+                          icon={<SendOutlined />}
+                          loading={actionLoading === "forward-source"}
+                          onClick={forwardSource}
+                        >一键转发到各平台</Button>
+                        <Typography.Text type="secondary">将原文同步分发到知乎、头条、百家号等各平台草稿箱</Typography.Text>
+                      </Space>
                     </Card>
                   </Space>
                 ) : <Alert message="尚未执行 GEO 调优" type="info" showIcon />}
