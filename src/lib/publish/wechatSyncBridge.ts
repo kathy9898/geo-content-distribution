@@ -360,8 +360,8 @@ export async function buildWechatSyncArticle(variant: PlatformVariant) {
     // 网易号适配器会把 table 转纯文本，因此网易专用：表格渲染成图片后再上传。
     html = await convertTablesToImages(html);
   } else if (variant.platform === "baijiahao") {
-    // 百家号对 data URI 兼容性很差，保留为可公开访问的代理 URL。
-    html = await rewriteAllImagesToProxyUrls(html);
+    // 百家号：浏览器端下载图片转 data URI，失败的移除避免适配器报错。
+    html = await inlineImagesSafe(html);
   } else {
     // 其他平台保留原生 HTML 表格，图片则统一内联为 data URI 交给适配器上传。
     html = await inlineAllImages(html);
@@ -480,6 +480,45 @@ async function rewriteAllImagesToProxyUrls(html: string): Promise<string> {
         : `${origin}/${url}`;
     return `src="${origin}/api/image-proxy?url=${encodeURIComponent(absoluteUrl)}"`;
   });
+}
+
+/** 百家号专用：浏览器端下载图片转 data URI，失败的移除 img 标签避免适配器报错 */
+async function inlineImagesSafe(html: string): Promise<string> {
+  const normalized = html.replace(/feishu-image:\/\/([\w]+)/g, "/api/feishu-image/$1");
+  const regex = /<img[^>]*\ssrc="(?!data:)([^"]+)"[^>]*\/?>/gi;
+  const matches = Array.from(normalized.matchAll(regex));
+  if (!matches.length) return normalized;
+
+  const seen = new Set<string>();
+  const replacements = await Promise.all(
+    matches.map(async (match) => {
+      const fullMatch = match[0];
+      const url = match[1];
+      if (seen.has(url)) return { original: fullMatch, replacement: "" };
+      seen.add(url);
+      try {
+        const fetchUrl = url.startsWith("/api/feishu-image/")
+          ? url
+          : `/api/image-proxy?url=${encodeURIComponent(url)}`;
+        const res = await fetch(fetchUrl);
+        if (!res.ok) return { original: fullMatch, replacement: "" };
+        const blob = await res.blob();
+        if (!blob.type.startsWith("image/")) return { original: fullMatch, replacement: "" };
+        const compressed = await compressImage(blob, MAX_IMAGE_WIDTH, JPEG_QUALITY);
+        return { original: fullMatch, replacement: fullMatch.replace(/src="[^"]*"/, `src="${compressed}"`) };
+      } catch {
+        return { original: fullMatch, replacement: "" };
+      }
+    }),
+  );
+
+  let result = normalized;
+  for (const { original, replacement } of replacements) {
+    if (original !== replacement) {
+      result = result.replace(original, replacement);
+    }
+  }
+  return result;
 }
 
 /** 用 Canvas 压缩图片：超过 maxWidth 等比缩放，输出 JPEG data URI */
