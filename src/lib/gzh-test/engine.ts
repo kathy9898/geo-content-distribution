@@ -150,6 +150,19 @@ function imageBlock(alt: string, url: string, t: GzhTestTheme) {
   return '<section style="margin:18px 0;"><img src="' + esc(url) + '" style="max-width:100%;height:auto;display:block;margin:0 auto;border-radius:' + t.radius + ';">' + cap + "</section>";
 }
 
+function tableBlock(header: string[], rows: string[][], t: GzhTestTheme) {
+  const ths = header.map((c) =>
+    '<th style="border:1px solid ' + t.line + ";padding:8px 12px;font-size:14px;font-weight:700;color:" + t.title + ";background:" + t.light + ";text-align:left;\">" + leaf(inline(c, t)) + "</th>"
+  ).join("");
+  const trs = rows.map((row) => {
+    const tds = row.map((c) =>
+      '<td style="border:1px solid ' + t.line + ";padding:8px 12px;font-size:14px;color:" + t.text + ";text-align:left;\">" + leaf(inline(c, t)) + "</td>"
+    ).join("");
+    return "<tr>" + tds + "</tr>";
+  }).join("");
+  return '<section style="margin:18px 0;overflow-x:auto;"><table style="border-collapse:collapse;width:100%;font-family:' + t.font + ';"><thead><tr>' + ths + "</tr></thead><tbody>" + trs + "</tbody></table></section>";
+}
+
 function subTitle(text: string, t: GzhTestTheme, themeId: GzhTestThemeId) {
   if (themeId === "graphite") {
     return '<p style="margin:20px 0 10px;padding-left:10px;border-left:3px solid ' + t.main + ';font-weight:700;color:' + t.title + ';">' + leaf(esc(text)) + "</p>";
@@ -194,11 +207,13 @@ function sign(author: string, t: GzhTestTheme) {
 }
 
 interface Block {
-  type: "p" | "h2" | "h3" | "quote" | "li" | "code" | "img" | "hr";
+  type: "p" | "h2" | "h3" | "quote" | "li" | "code" | "img" | "hr" | "table";
   text?: string;
   n?: number;
   alt?: string;
   url?: string;
+  rows?: string[][];
+  header?: string[];
 }
 
 function parse(md: string, titleOverride: string) {
@@ -217,6 +232,28 @@ function parse(md: string, titleOverride: string) {
       buf = [];
     }
   }
+  function isTableRow(l: string) {
+    const trimmed = l.trim();
+    return trimmed.startsWith("|") && trimmed.endsWith("|") && trimmed.length > 2;
+  }
+  function parseTableRow(l: string): string[] {
+    return l.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
+  }
+  function isTableSeparator(l: string) {
+    return /^\|[\s:-]+\|/.test(l.trim()) && l.trim().split("|").every((c) => /^[\s:|-]+$/.test(c));
+  }
+  let tableBuf: string[] = [];
+  function flushTable() {
+    if (tableBuf.length < 2) {
+      tableBuf.forEach((tl) => buf.push(tl.trim()));
+      tableBuf = [];
+      return;
+    }
+    const header = parseTableRow(tableBuf[0]);
+    const rows = tableBuf.slice(tableBuf[1].trim().match(/^[\s:|-]+$/) ? 2 : 1).map(parseTableRow);
+    blocks.push({ type: "table", header, rows });
+    tableBuf = [];
+  }
 
   for (const l of lines) {
     if (l.trim().startsWith("```")) {
@@ -225,6 +262,13 @@ function parse(md: string, titleOverride: string) {
       continue;
     }
     if (inCode) { code.push(l); continue; }
+    if (isTableRow(l)) {
+      if (!tableBuf.length) flush();
+      tableBuf.push(l);
+      continue;
+    } else if (tableBuf.length) {
+      flushTable();
+    }
     if (!l.trim()) { flush(); continue; }
 
     let m: RegExpMatchArray | null;
@@ -271,6 +315,7 @@ function parse(md: string, titleOverride: string) {
     buf.push(l.trim());
   }
   flush();
+  if (tableBuf.length) flushTable();
   return { title: title || "未命名文章", heads, blocks };
 }
 
@@ -299,6 +344,7 @@ export function renderGzhTestArticle(options: GzhTestRenderOptions): string {
     else if (b.type === "code") html += codeBlock(b.text || "", t);
     else if (b.type === "img") html += imageBlock(b.alt || "", b.url || "", t);
     else if (b.type === "hr") html += '<section style="margin:28px auto;width:42px;border-top:1px solid ' + t.line + ';"></section>';
+    else if (b.type === "table") html += tableBlock(b.header || [], b.rows || [], t);
     else html += p(b.text || "", t);
   });
 
