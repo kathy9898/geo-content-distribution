@@ -443,8 +443,32 @@ export function convertMarkdownToGzh(options: ConvertOptions): GzhFormatResult {
         htmlParts.push(fillComponentTemplate(keyPointHtml, {
           '重点观点': (token as any).text || '',
           '补充说明': '',
-        }));
-      }
+       }));
+     }
+     continue;
+   }
+
+    // 表格
+    if (token.type === 'table') {
+      const tableToken = token as any;
+      const header = (tableToken.header || []).map((cell: any) => cell.text || '').map((c: string) => processInlineMarkdown(c, vars, theme.meta.underlineCss, aiResult.keywordMarks, i));
+      const rows = (tableToken.rows || []).map((row: any[]) =>
+        row.map((cell: any) => processInlineMarkdown(cell.text || '', vars, theme.meta.underlineCss, aiResult.keywordMarks, i))
+      );
+      const headerCells = header.map((cell: string) =>
+        `<th style="border:1px solid ${vars.borderColor};padding:8px 12px;font-size:14px;font-weight:600;color:${vars.titleColor};background:${vars.lightBg};text-align:left;"><span leaf="">${cell}</span></th>`
+      ).join('');
+      const bodyRows = rows.map((row: string[]) => {
+        const cells = row.map((cell: string) =>
+          `<td style="border:1px solid ${vars.borderColor};padding:8px 12px;font-size:14px;color:${vars.bodyColor};text-align:left;"><span leaf="">${cell}</span></td>`
+        ).join('');
+        return `<tr>${cells}</tr>`;
+      }).join('');
+      htmlParts.push(
+        `<section style="margin-top:16px;margin-bottom:16px;overflow-x:auto;">` +
+        `<table style="border-collapse:collapse;width:100%;font-family:${vars.fontFamily};"><thead><tr>${headerCells}</tr></thead><tbody>${bodyRows}</tbody></table>` +
+        `</section>`
+      );
       continue;
     }
 
