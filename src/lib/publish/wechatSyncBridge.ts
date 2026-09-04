@@ -359,13 +359,9 @@ export async function buildWechatSyncArticle(variant: PlatformVariant) {
   if (variant.platform === "netease") {
     // 网易号适配器会把 table 转纯文本，因此网易专用：表格渲染成图片后再上传。
     html = await convertTablesToImages(html);
-  } else if (variant.platform === "baijiahao") {
-    // 百家号：浏览器端下载图片转 data URI，失败的移除避免适配器报错。
-    html = await inlineImagesSafe(html);
-  } else {
-    // 其他平台保留原生 HTML 表格，图片则统一内联为 data URI 交给适配器上传。
-    html = await inlineAllImages(html);
   }
+  // 所有平台统一：浏览器端下载图片转 data URI，失败的移除 img 标签避免适配器报错。
+  html = await inlineImagesSafe(html);
 
   return {
     title: variant.title,
@@ -485,7 +481,7 @@ async function rewriteAllImagesToProxyUrls(html: string): Promise<string> {
 /** 百家号专用：浏览器端下载图片转 data URI，失败的移除 img 标签避免适配器报错 */
 async function inlineImagesSafe(html: string): Promise<string> {
   const normalized = html.replace(/feishu-image:\/\/([\w]+)/g, "/api/feishu-image/$1");
-  const regex = /<img[^>]*\ssrc="(?!data:)([^"]+)"[^>]*\/?>/gi;
+  const regex = /<img[^>]*\ssrc="(?!data:)([^"]+)"[^>]*>/gi;
   const matches = Array.from(normalized.matchAll(regex));
   if (!matches.length) return normalized;
 
