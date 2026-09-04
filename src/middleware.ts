@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { SESSION_COOKIE, isAuthEnabled, verifySessionValue } from "@/lib/auth/session";
 
-const PUBLIC_PATHS = ["/login", "/api/auth/login", "/api/feishu-image", "/api/image-proxy"];
+const PUBLIC_PATHS = ["/login", "/api/auth/login"];
+
+const PUBLIC_PREFIXES = ["/api/feishu-image/", "/api/image-proxy"];
 
 function isPublicPath(pathname: string) {
   return (
     PUBLIC_PATHS.includes(pathname) ||
+    PUBLIC_PREFIXES.some((prefix) => pathname.startsWith(prefix)) ||
     pathname.startsWith("/_next") ||
     pathname.startsWith("/favicon") ||
     pathname.match(/\.(png|jpg|jpeg|gif|svg|ico|css|js|map)$/)

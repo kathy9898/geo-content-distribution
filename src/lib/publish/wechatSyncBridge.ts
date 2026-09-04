@@ -369,7 +369,7 @@ export async function buildWechatSyncArticle(variant: PlatformVariant) {
     summary: variant.summary,
     content: html,
     html: html,
-    markdown: variant.bodyMarkdown,
+    markdown: html,
     tags: variant.tags,
     draft: true,
     openDraft: true,
