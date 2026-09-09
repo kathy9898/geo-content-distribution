@@ -1,7 +1,7 @@
 import OpenAI from "openai";
 import { z } from "zod";
 
-export const DEFAULT_MODEL = "gpt-5.5";
+export const DEFAULT_MODEL = "deepseek-v4-pro-0813";
 
 function normalizeBaseUrl(url?: string) {
   if (!url) return undefined;
