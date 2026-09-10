@@ -2,6 +2,7 @@ import OpenAI from "openai";
 import { z } from "zod";
 
 export const DEFAULT_MODEL = "deepseek-v4-pro-0813";
+const AI_REQUEST_TIMEOUT_MS = 120_000;
 
 function normalizeBaseUrl(url?: string) {
   if (!url) return undefined;
@@ -34,19 +35,31 @@ function extractJson(text: string) {
 export async function generateJson<T>(prompt: string, schema: z.ZodSchema<T>, maxTokens?: number): Promise<{ data: T; model: string }> {
   const model = process.env.OPENAI_MODEL || process.env.ANTHROPIC_MODEL || process.env.AI_MODEL || DEFAULT_MODEL;
   const client = getClient();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), AI_REQUEST_TIMEOUT_MS);
 
-  const completion = await client.chat.completions.create({
-    model,
-    temperature: 0.3,
-    max_tokens: maxTokens || 16384,
-    response_format: { type: "json_object" },
-    messages: [
-      {
-        role: "user",
-        content: prompt,
-      },
-    ],
-  });
+  let completion;
+  try {
+    completion = await client.chat.completions.create({
+      model,
+      temperature: 0.3,
+      max_tokens: maxTokens || 16384,
+      response_format: { type: "json_object" },
+      messages: [
+        {
+          role: "user",
+          content: prompt,
+        },
+      ],
+    }, { signal: controller.signal });
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new Error(`AI 生成超时（${AI_REQUEST_TIMEOUT_MS / 1000} 秒），文章较长时请稍后重试。`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 
   const text = completion.choices[0]?.message?.content?.trim();
   if (!text) {
