@@ -1,7 +1,7 @@
 import OpenAI from "openai";
 import { z } from "zod";
 
-export const DEFAULT_MODEL = "kimi-k3";
+export const DEFAULT_MODEL = "gpt-5.5";
 const AI_REQUEST_TIMEOUT_MS = 120_000;
 
 function normalizeBaseUrl(url?: string) {
