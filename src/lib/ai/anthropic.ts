@@ -44,7 +44,6 @@ export async function generateJson<T>(prompt: string, schema: z.ZodSchema<T>, ma
       model,
       temperature: 0.3,
       max_tokens: maxTokens || 16384,
-      response_format: { type: "json_object" },
       messages: [
         {
           role: "user",
