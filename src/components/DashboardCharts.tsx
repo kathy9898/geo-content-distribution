@@ -37,14 +37,15 @@ function listDays(firstDay: string, lastDay: string): string[] {
 }
 
 export function PlatformPieChart({ records }: { records: PublishRecord[] }) {
-  const counts = new Map<string, number>();
-  for (const r of records) {
-    const label = platformLabels[r.platform as Platform] || r.platform;
-    counts.set(label, (counts.get(label) || 0) + 1);
-  }
-  const data = Array.from(counts.entries())
-    .map(([name, value]) => ({ name, value }))
-    .sort((a, b) => b.value - a.value);
+ const counts = new Map<string, number>();
+ for (const r of records) {
+   const label = platformLabels[r.platform as Platform] || r.platform;
+   counts.set(label, (counts.get(label) || 0) + 1);
+ }
+  const total = records.length || 1;
+ const data = Array.from(counts.entries())
+   .map(([name, value]) => ({ name, value, percent: Math.round((value / total) * 100) }))
+   .sort((a, b) => b.value - a.value);
 
   if (!data.length) return <Empty description="暂无发布记录" style={{ padding: "40px 0" }} />;
 
@@ -60,13 +61,13 @@ export function PlatformPieChart({ records }: { records: PublishRecord[] }) {
           innerRadius={56}
           outerRadius={95}
           paddingAngle={2}
-          label={({ name, value }) => `${name} ${value}`}
+          label={({ name, value, percent }: { name: string; value: number; percent?: number }) => `${name} ${value} (${percent ?? 0}%)`}
         >
           {data.map((entry, index) => (
             <Cell key={entry.name} fill={PIE_COLORS[index % PIE_COLORS.length]} />
           ))}
         </Pie>
-        <Tooltip formatter={(value, name) => [`${value} 篇`, name]} />
+        <Tooltip formatter={(value, _name, entry) => [`${value} 篇 (${entry?.payload?.percent ?? 0}%)`, entry?.payload?.name]} />
         <Legend verticalAlign="bottom" height={36} wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
       </PieChart>
     </ResponsiveContainer>
