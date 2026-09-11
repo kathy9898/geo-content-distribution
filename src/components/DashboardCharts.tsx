@@ -49,14 +49,14 @@ export function PlatformPieChart({ records }: { records: PublishRecord[] }) {
   if (!data.length) return <Empty description="暂无发布记录" style={{ padding: "40px 0" }} />;
 
   return (
-    <ResponsiveContainer width="100%" height={280}>
+    <ResponsiveContainer width="100%" height={320}>
       <PieChart>
         <Pie
           data={data}
           dataKey="value"
           nameKey="name"
           cx="50%"
-          cy="50%"
+          cy="48%"
           innerRadius={56}
           outerRadius={95}
           paddingAngle={2}
@@ -67,7 +67,7 @@ export function PlatformPieChart({ records }: { records: PublishRecord[] }) {
           ))}
         </Pie>
         <Tooltip formatter={(value, name) => [`${value} 篇`, name]} />
-        <Legend />
+        <Legend verticalAlign="bottom" height={36} wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
       </PieChart>
     </ResponsiveContainer>
   );
