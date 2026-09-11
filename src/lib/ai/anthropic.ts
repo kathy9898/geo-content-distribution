@@ -1,7 +1,7 @@
 import OpenAI from "openai";
 import { z } from "zod";
 
-export const DEFAULT_MODEL = "gpt-5.5";
+export const DEFAULT_MODEL = "deepseek-v4.1-flash";
 
 // 总时长上限：兜底保护。流式返回时只要数据持续在流动就不会触发。
 const DEFAULT_TOTAL_TIMEOUT_MS = 600_000;
