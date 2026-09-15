@@ -60,6 +60,12 @@ OPENAI_MODEL=gpt-5.5
 # AI_STALL_TIMEOUT_MS=90000
 # AI_TOTAL_TIMEOUT_MS=600000
 
+# 单次生成输出 token 上限，默认 16384；deepseek 等推理模型建议 32768，避免长文 JSON 被截断。
+# AI_MAX_TOKENS=32768
+
+# 默认关闭推理模型的思考过程（思考 token 计入输出上限且拖慢生成）；设为 1 可恢复。
+# AI_ENABLE_THINKING=1
+
 FEISHU_APP_ID=你的飞书AppID
 FEISHU_APP_SECRET=你的飞书Secret
 ```
