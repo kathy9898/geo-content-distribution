@@ -32,6 +32,7 @@ const wechatSyncPlatformKeys: Record<Platform, string> = {
   cto51: "51cto",
   segmentfault: "segmentfault",
   twitter: "twitter",
+  ucloud: "ucloud",
 };
 
 export const platformDraftUrls: Record<Platform, string> = {
@@ -47,6 +48,7 @@ export const platformDraftUrls: Record<Platform, string> = {
   cto51: "https://blog.51cto.com/",
   segmentfault: "https://segmentfault.com/write",
   twitter: "https://x.com/compose/post",
+  ucloud: "https://www.ucloud.cn/yun/",
 };
 
 type WechatSyncResult = {

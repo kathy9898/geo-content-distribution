@@ -18,6 +18,7 @@
   - `AI_TOTAL_TIMEOUT_MS`（默认 600000）= 单次请求兜底上限。
 
 ## 已知坑位
+- **推理模型（deepseek 等）的思考 token 计入输出上限**：长文会被拦腰截断导致「JSON 解析失败」。`generateJson` 默认带 `thinking:{"type":"disabled"}`（400 自动回退），`AI_MAX_TOKENS` 默认 16384、线上已设 32768；`AI_ENABLE_THINKING=1` 可恢复思考。该中转上 `reasoning_effort` 和 `enable_thinking=false` 无效。
 - **OpenAI SDK 在中止（abort）时会静默结束流而不抛异常**。任何流式消费都必须在 `for await` 结束后再补一次 `signal.aborted` 检查，否则超时会被误报成「AI 返回内容不是 JSON」。
 - 多数 AI 路由带**二次重试**（检测到「转述原文」或「活人感不合格」会再调一次 `generateJson`），耗时约为单次的两倍，排查长耗时需留意。
 - 路由的 `catch` 默认只返回 JSON、不写日志；`anthropic.ts` 中已用 `[ai]` 前缀打印中止/失败原因，排障看 `docker compose logs -f`。

@@ -1,4 +1,4 @@
-export type Platform = "zhihu" | "toutiao" | "baijiahao" | "csdn" | "cnblogs" | "juejin" | "sohu" | "netease" | "wechat" | "cto51" | "segmentfault" | "twitter";
+export type Platform = "zhihu" | "toutiao" | "baijiahao" | "csdn" | "cnblogs" | "juejin" | "sohu" | "netease" | "wechat" | "cto51" | "segmentfault" | "twitter" | "ucloud";
 export type ContentStatus = "draft" | "geo_optimized" | "variant_generated" | "published";
 export type ReviewStatus = "draft" | "reviewing" | "approved" | "scheduled" | "published" | "failed";
 export type HumanizeIntensity = "light" | "medium" | "strong";
@@ -247,6 +247,7 @@ export const platformLabels: Record<Platform, string> = {
   wechat: "公众号",
   cto51: "51CTO",
   twitter: "Twitter",
+  ucloud: "yun社区",
 };
 
 /** Detect platform from a publish URL */
@@ -264,7 +265,8 @@ export function detectPlatformFromUrl(url: string): Platform | null {
     if (host.includes("163.com") || host.includes("netease.com")) return "netease";
     if (host.includes("mp.weixin.qq.com")) return "wechat";
     if (host.includes("51cto.com")) return "cto51";
-    if (/(^|\.)x\.com$/.test(host) || /(^|\.)twitter\.com$/.test(host)) return "twitter";
+   if (/(^|\.)x\.com$/.test(host) || /(^|\.)twitter\.com$/.test(host)) return "twitter";
+    if (host.includes("ucloud.cn")) return "ucloud";
   } catch {
     // invalid URL, ignore
   }
