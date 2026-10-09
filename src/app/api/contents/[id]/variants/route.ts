@@ -3,7 +3,7 @@ import { generateJson } from "@/lib/ai/anthropic";
 import { buildPlatformIndependentRetryPrompt, buildPlatformVariantPrompt } from "@/lib/ai/prompts";
 import { getPromptTemplate } from "@/lib/ai/promptTemplates";
 import { platformVariantOutputSchema } from "@/lib/ai/schemas";
-import { findSourceNarrationPhrases } from "@/lib/ai/geoStyleValidation";
+import { findSourceNarrationPhrases, removeSourceNarrationPhrases } from "@/lib/ai/geoStyleValidation";
 import { getContentDetail, updateContent } from "@/lib/storage/contentRepository";
 import { createId, readCollection, storeFiles, writeCollection } from "@/lib/storage/jsonStore";
 import type { Platform, PlatformVariant } from "@/types/geo";
@@ -150,7 +150,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
       );
       const retryNarrationPhrases = findSourceNarrationPhrases(result.data);
       if (retryNarrationPhrases.length) {
-        throw new Error(`平台成稿仍包含转述输入稿的话术：${retryNarrationPhrases.join("、")}，请重新生成该平台版本。`);
+        result = { ...result, data: removeSourceNarrationPhrases(result.data) };
       }
     }
 

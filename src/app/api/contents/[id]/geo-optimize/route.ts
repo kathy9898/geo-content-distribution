@@ -3,7 +3,7 @@ import { generateJson } from "@/lib/ai/anthropic";
 import { buildGeoOptimizationPrompt, buildIndependentArticleRetryPrompt, GEO_PROMPT_VERSION } from "@/lib/ai/prompts";
 import { getPromptTemplate } from "@/lib/ai/promptTemplates";
 import { geoOptimizationOutputSchema } from "@/lib/ai/schemas";
-import { findSourceNarrationPhrases } from "@/lib/ai/geoStyleValidation";
+import { findSourceNarrationPhrases, removeSourceNarrationPhrases } from "@/lib/ai/geoStyleValidation";
 import { getContentDetail, updateContent } from "@/lib/storage/contentRepository";
 import { createId, readCollection, storeFiles, writeCollection } from "@/lib/storage/jsonStore";
 import type { GeoOptimization } from "@/types/geo";
@@ -31,7 +31,7 @@ export async function POST(_: Request, { params }: { params: { id: string } }) {
       );
       const retryNarrationPhrases = findSourceNarrationPhrases(result.data);
       if (retryNarrationPhrases.length) {
-        throw new Error(`生成结果仍包含转述原文的话术：${retryNarrationPhrases.join("、")}，请重新执行 GEO 调优。`);
+        result = { ...result, data: removeSourceNarrationPhrases(result.data) };
       }
     }
 
