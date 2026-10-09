@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
+import sharp from "sharp";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   const url = new URL(request.url).searchParams.get("url");
+  const format = new URL(request.url).searchParams.get("format");
   if (!url || !/^https?:\/\//i.test(url)) {
     return NextResponse.json({ message: "缺少 url 参数" }, { status: 400 });
   }
@@ -20,11 +22,15 @@ export async function GET(request: Request) {
       return NextResponse.json({ message: "非图片类型" }, { status: 415 });
     }
 
-    const buffer = Buffer.from(await response.arrayBuffer());
+    let buffer = Buffer.from(await response.arrayBuffer());
+    if (format === "jpg") {
+      buffer = await sharp(buffer).rotate().jpeg({ quality: 85 }).toBuffer();
+    }
+    const outputContentType = format === "jpg" ? "image/jpeg" : contentType;
     return new NextResponse(buffer, {
       status: 200,
       headers: {
-        "Content-Type": contentType,
+        "Content-Type": outputContentType,
         "Cache-Control": "public, max-age=86400",
         "Content-Length": String(buffer.length),
         "Access-Control-Allow-Origin": "*",
