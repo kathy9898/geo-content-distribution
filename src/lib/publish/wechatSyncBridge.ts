@@ -475,14 +475,44 @@ async function inlineAllImages(html: string): Promise<string> {
 async function rewriteAllImagesToProxyUrls(html: string): Promise<string> {
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   const normalized = html.replace(/feishu-image:\/\/([\w]+)/g, "/api/feishu-image/$1");
-  return normalized.replace(/src="(?!data:)([^"]+)"/g, (_match, url: string) => {
-    const absoluteUrl = url.startsWith("http://") || url.startsWith("https://")
-      ? url
-      : url.startsWith("/")
-        ? `${origin}${url}`
-        : `${origin}/${url}`;
-    return `src="${origin}/api/image-proxy?url=${encodeURIComponent(absoluteUrl)}&format=jpg"`;
-  });
+  const regex = /<img[^>]*\ssrc="(?!data:)([^"]+)"[^>]*>/gi;
+  const matches = Array.from(normalized.matchAll(regex));
+  if (!matches.length) return normalized;
+
+  const seen = new Set<string>();
+  const replacements = await Promise.all(
+    matches.map(async (match) => {
+      const fullMatch = match[0];
+      const url = match[1];
+      if (seen.has(url)) return { original: fullMatch, replacement: "" };
+      seen.add(url);
+
+      const absoluteUrl = url.startsWith("http://") || url.startsWith("https://")
+        ? url
+        : url.startsWith("/")
+          ? `${origin}${url}`
+          : `${origin}/${url}`;
+      const proxyUrl = `${origin}/api/image-proxy?url=${encodeURIComponent(absoluteUrl)}&format=jpg`;
+      try {
+        const res = await fetch(proxyUrl);
+        const contentType = res.headers.get("content-type") || "";
+        if (!res.ok || !contentType.startsWith("image/")) {
+          return { original: fullMatch, replacement: "" };
+        }
+        return { original: fullMatch, replacement: fullMatch.replace(/src="[^"]*"/, `src="${proxyUrl}"`) };
+      } catch {
+        return { original: fullMatch, replacement: "" };
+      }
+    }),
+  );
+
+  let result = normalized;
+  for (const { original, replacement } of replacements) {
+    if (original !== replacement) {
+      result = result.split(original).join(replacement);
+    }
+  }
+  return result;
 }
 
 /** 百家号专用：浏览器端下载图片转 data URI，失败的移除 img 标签避免适配器报错 */
