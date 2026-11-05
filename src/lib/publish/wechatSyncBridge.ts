@@ -356,6 +356,21 @@ export function hasWechatSyncBridge() {
 }
 
 export async function buildWechatSyncArticle(variant: PlatformVariant) {
+  if (variant.platform === "twitter") {
+    // X 适配器只读取 markdown 字段并逐张上传图片，所以这里传原始 Markdown，图片改成可公开访问的 JPEG 代理 URL。
+    const markdown = await prepareTwitterMarkdown(variant.bodyMarkdown);
+    return {
+      title: variant.title,
+      desc: variant.summary,
+      summary: variant.summary,
+      content: markdown,
+      html: markdown,
+      markdown,
+      tags: variant.tags,
+      draft: true,
+      openDraft: true,
+    };
+  }
   let html = marked.parse(variant.bodyMarkdown) as string;
 
   if (variant.platform === "netease") {
@@ -384,6 +399,33 @@ export async function buildWechatSyncArticle(variant: PlatformVariant) {
 }
 
 /** 将飞书图片相对路径转为绝对 URL，让适配器 processImages 下载并上传 */
+async function prepareTwitterMarkdown(markdown: string): Promise<string> {
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const normalized = markdown.replace(/feishu-image:\/\/([\w]+)/g, "/api/feishu-image/$1");
+  const regex = /!\[([^\]]*)\]\(([^)\s]+)\)/g;
+  const urls = Array.from(new Set(Array.from(normalized.matchAll(regex)).map((match) => match[2])));
+
+  const proxyByUrl = new Map<string, string>();
+  await Promise.all(
+    urls.map(async (url) => {
+      const absoluteUrl = url.startsWith("http://") || url.startsWith("https://") ? url : `${origin}${url.startsWith("/") ? "" : "/"}${url}`;
+      const proxyUrl = `${origin}/api/image-proxy?url=${encodeURIComponent(absoluteUrl)}&format=jpg`;
+      try {
+        const res = await fetch(proxyUrl);
+        const contentType = res.headers.get("content-type") || "";
+        if (res.ok && contentType.startsWith("image/")) proxyByUrl.set(url, proxyUrl);
+      } catch {
+        // 图片不可用时直接移除，避免 X 因失效图片整篇失败
+      }
+    }),
+  );
+
+  return normalized.replace(regex, (_full, alt: string, url: string) => {
+    const proxyUrl = proxyByUrl.get(url);
+    return proxyUrl ? `![${alt}](${proxyUrl})` : "";
+  });
+}
+
 function resolveImageUrls(html: string): string {
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   let result = html.replace(
