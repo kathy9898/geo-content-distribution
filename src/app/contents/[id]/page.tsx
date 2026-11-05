@@ -325,6 +325,25 @@ export default function ContentDetailPage() {
       const article = await buildWechatSyncArticle(variant);
       const result = await (window as any).syncPost(article);
 
+      if (variant.platform === "twitter") {
+        try {
+          await fetch(`/api/variants/${variant.id}/sync-record`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              status: "draft_synced" as const,
+              publishUrl: result?.draftUrl || result?.url || undefined,
+              syncTaskId: result?.taskId || undefined,
+              note: "X 草稿同步（插件返回的报错已忽略，请到 X 草稿箱核对图文）",
+            }),
+          });
+          await loadDetail();
+        } catch { /* non-critical */ }
+        message.info("已提交到 X 草稿箱，请到 X 草稿箱核对图文是否完整");
+        setActionLoading(undefined);
+        return;
+      }
+
       // Auto-save publish record after sync
       if (result) {
         try {
