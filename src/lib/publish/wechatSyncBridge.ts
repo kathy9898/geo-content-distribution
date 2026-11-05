@@ -378,7 +378,7 @@ export async function buildWechatSyncArticle(variant: PlatformVariant) {
     html = await convertTablesToImages(html);
   }
   if (variant.platform === "baijiahao") {
-    // 百家号不接受 data URI；改写成服务端 JPEG 代理 URL，交给适配器按 URL 上传。
+    // 百家号不接受 data URI，也可能拒绝 HTTP 图片；改用 HTTPS 图片代理输出 JPEG。
     html = await rewriteAllImagesToProxyUrls(html);
   } else {
     // 其他平台统一：浏览器端下载图片转 data URI，失败的移除 img 标签避免适配器报错。
@@ -534,7 +534,7 @@ async function rewriteAllImagesToProxyUrls(html: string): Promise<string> {
         : url.startsWith("/")
           ? `${origin}${url}`
           : `${origin}/${url}`;
-      const proxyUrl = `${origin}/api/image-proxy?url=${encodeURIComponent(absoluteUrl)}&format=jpg`;
+      const proxyUrl = `https://wsrv.nl/?url=${encodeURIComponent(absoluteUrl)}&output=jpg&w=1200&q=85`;
       try {
         const res = await fetch(proxyUrl);
         const contentType = res.headers.get("content-type") || "";
